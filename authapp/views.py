@@ -18,7 +18,7 @@ from .serializers import (
     SignupSerializer, AccountTypeSelectionSerializer, VerifyOTPSerializer, 
     ResendOTPSerializer, LoginSerializer, ForgotPasswordSerializer, 
     ResetPasswordSerializer, ProfileUpdateSerializer, ConfirmDeleteUserSerializer,
-    MeSerializer, SubUserSerializer, SubUserCreateSerializer
+    MeSerializer, SubUserSerializer, SubUserCreateSerializer,SubUserInviteResponseSerializer
 )
 from .models import OTP, SubUser
 
@@ -77,7 +77,11 @@ class SignupView(StandardResponseMixin, APIView):
     permission_classes = [AllowAny]
     
     def post(self, request):
-        serializer = SignupSerializer(data=request.data)
+        # serializer = SignupSerializer(data=request.data)
+        serializer = SignupSerializer(
+            data=request.data,
+            context={"role": request.data.get("role")}
+        )
         if serializer.is_valid():
             user = serializer.save()
             otp = serializer.context.get('otp')
@@ -95,13 +99,18 @@ class SignupView(StandardResponseMixin, APIView):
             ❌❌❌Got error: TypeError: StandardResponseMixin.success_response() got multiple values for argument 'message'
 
             '''
+            data = {
+                "email": user.email,
+                "name": user.name,
+                "otp": otp,  # DEV ONLY
+                "contact_number":user.contact_number,
+            }
+
+            if user.role == "salon_owner":
+                data["account_type"] = user.account_type
+
             return self.success_response(
-                data={
-                    "email": user.email,
-                    "name": user.name,
-                    "otp": otp , # ✅ DEV ONLY,In production → remove "otp" only
-                    "account_type": user.account_type,
-                },
+                data=data,
                 message="User created. OTP sent to email.",
                 status_code=201
             )
@@ -325,6 +334,8 @@ class MeView(APIView):
         serializer = MeSerializer(request.user)
         return Response(serializer.data, status=200)
 
+
+
 class AccountTypeSetupView(StandardResponseMixin, APIView):
     """
     Set account type after OTP verification.
@@ -432,11 +443,19 @@ class SubUserListCreateView(StandardResponseMixin, APIView):
         if serializer.is_valid():
             sub_user = serializer.save()
             
-            return self.success_response(
-                data=SubUserSerializer(sub_user).data,
-                message="Staff member created successfully",
-                status_code=201
-            )
+            response_serializer = SubUserInviteResponseSerializer(sub_user)
+
+            return Response({
+                "success": True,
+                "statusCode": 201,
+                "message": "Staff member created successfully",
+                "data": response_serializer.data
+            })
+            # return self.success_response(
+            #     data=SubUserSerializer(sub_user).data,
+            #     message="Staff member created successfully",
+            #     status_code=201
+            # )
         
         return self.error_response(
             "Failed to create staff member",

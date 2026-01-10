@@ -61,6 +61,16 @@ class SignupSerializer(serializers.Serializer):
             raise serializers.ValidationError("This email is already registered.")
         return value
     
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        role = self.context.get("role")
+
+        if role in ['staff', 'retailer']:
+            data.pop('account_type', None)
+
+        return data
+    
     def validate(self, data):
         role = data['role']
 
@@ -95,9 +105,16 @@ class SignupSerializer(serializers.Serializer):
             except SubUser.DoesNotExist:
                 raise serializers.ValidationError({"email": "This staff email is not registered for the owner."})
 
-            # Check staff limit
-            if owner.get_staff_count() >= owner.staff_limit:
-                raise serializers.ValidationError({"owner": "Owner's staff limit reached."})
+            '''
+            ❌❌❌
+            Staff limit should ONLY be enforced when OWNER creates staff slots
+                Because:
+                Owner already reserved the slot
+                Staff signup should just claim their reserved slot
+            '''
+            # Check staff limit❌
+            # if owner.get_staff_count() >= owner.staff_limit:
+            #     raise serializers.ValidationError({"owner": "Owner's staff limit reached."})
 
             data['sub_user'] = sub_user
             data['owner'] = owner
@@ -139,7 +156,12 @@ class SignupSerializer(serializers.Serializer):
         if role == 'staff':
             #✅ This ensures pre-registered staff becomes active and linked to a user.
             sub_user = validated_data['sub_user']  # This comes from your validate()
-            sub_user.user = user  # link FK (you need to add FK field in SubUser model if not yet)
+            # sub_user.user = user  # link FK (you need to add FK field in SubUser model if not yet)
+            # sub_user.status = 'ACTIVE'
+            # sub_user.save()
+            sub_user.user = user
+            sub_user.name = name
+            sub_user.contact_number = contact_number
             sub_user.status = 'ACTIVE'
             sub_user.save()
         # Generate and send OTP
@@ -308,20 +330,30 @@ class MeSerializer(serializers.ModelSerializer):
             return current_staff_count < obj.staff_limit
         return False
 
+
+class SubUserInviteResponseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SubUser
+        fields = ['id', 'email', 'is_active', 'created_at']
+
+
 class SubUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = SubUser
         fields = ['id', 'name', 'contact_number', 'email', 'is_active', 'created_at']
         read_only_fields = ['id', 'created_at']
 
+
 class SubUserCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = SubUser
-        fields = ['name', 'email', 'contact_number']
+        # fields = ['name', 'email', 'contact_number']
+        fields = ['email'] #only email will inputed by owner during registering a staff
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
         main_user = self.context['request'].user
+
         if not main_user.can_add_staff():
             raise serializers.ValidationError("Only salon owners with staff can create sub-users")
 
