@@ -251,7 +251,14 @@ STRIPE_WEBHOOK_SECRET='whsec_2c58f3e29a2cdff7d358ddc74ad7bfed19a8e641632368dce5a
 BASE_URL = "https://6zpmb4x8-8015.inc1.devtunnels.ms"
 
 
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "6zpmb4x8-8015.inc1.devtunnels.ms",
+]
 
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 

@@ -281,10 +281,19 @@ class ProfileUpdateView(APIView):
 
     def patch(self, request):
         serializer = ProfileUpdateSerializer(
-            request.user, data=request.data, partial=True
+            request.user,
+            data=request.data,
+            partial=True,
+            context={"request": request}#added for image public url
         )
         if serializer.is_valid():
             user = serializer.save()
+
+            #for image public url
+            image_url=None
+            if user.image:
+                image_url=request.build_absolute_uri(user.image.url)
+
             return Response({
                 "message": "Profile updated",
                 "user": {
@@ -292,8 +301,8 @@ class ProfileUpdateView(APIView):
                     "email": user.email,
                     "name": user.name,
                     "contact_number": user.contact_number,
-                    "image": user.image.url if user.image else None,
-                    "account_type": user.account_type
+                    "image": image_url
+                    # "account_type": user.account_type
                 }
             })
         return Response(serializer.errors, status=400)
@@ -331,7 +340,7 @@ class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        serializer = MeSerializer(request.user)
+        serializer = MeSerializer(request.user,context={"request": request})#added for image public url)
         return Response(serializer.data, status=200)
 
 
@@ -394,12 +403,12 @@ class SubUserListCreateView(StandardResponseMixin, APIView):
             )
         
         # Check staff limit
-        current_staff_count = user.sub_users.filter(is_active=True).count()
-        if current_staff_count >= user.staff_limit:
-            return self.error_response(
-                f"Staff limit reached ({user.staff_limit})",
-                status_code=400
-            )
+        # current_staff_count = user.sub_users.filter(is_active=True).count()
+        # if current_staff_count >= user.staff_limit:
+        #     return self.error_response(
+        #         f"Staff limit reached ({user.staff_limit})",
+        #         status_code=400
+        #     )
         
         # Get all staff with optimized query
         # sub_users = request.user.sub_users.all().order_by('-created_at')

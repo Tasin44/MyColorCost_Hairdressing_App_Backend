@@ -279,10 +279,16 @@ class ResetPasswordSerializer(serializers.Serializer):
     
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):
+    image=serializers.SerializerMethodField()
     class Meta:
         model = User
-        fields = ["name", "image"]
+        fields = ["name", "image","contact_number"]
 
+    def get_image(self,obj):
+        request = self.context.get("request")
+        if obj.image and request:
+            return request.build_absolute_uri(obj.image.url)
+        return None
 '''
 class DeleteUserSerializer(serializers.Serializer):
     confirm = serializers.BooleanField()
@@ -308,13 +314,12 @@ class ConfirmDeleteUserSerializer(serializers.Serializer):
 class MeSerializer(serializers.ModelSerializer):
     sub_users_count = serializers.SerializerMethodField()
     can_create_staff = serializers.SerializerMethodField()
-    
+    image=serializers.SerializerMethodField()
     class Meta:
         model = User
         fields = [
             'id', 'email', 'name', 'image', 'contact_number','role',
             'account_type', 'staff_limit', 'notification_enabled',
-            'subscription_status', 'trial_start_date', 'trial_end_date',
             'verified', 'sub_users_count', 'can_create_staff',
             'created_at'
         ]
@@ -329,7 +334,12 @@ class MeSerializer(serializers.ModelSerializer):
             current_staff_count = obj.sub_users.filter(is_active=True).count()
             return current_staff_count < obj.staff_limit
         return False
-
+    
+    def get_image(self,obj):
+        request = self.context.get("request")
+        if obj.image and request:
+            return request.build_absolute_uri(obj.image.url)
+        return None
 
 class SubUserInviteResponseSerializer(serializers.ModelSerializer):
     class Meta:
