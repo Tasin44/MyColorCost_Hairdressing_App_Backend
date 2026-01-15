@@ -99,13 +99,13 @@ class ClientDetailSerializer(serializers.ModelSerializer):
         if obj.sub_user:
             return {
                 'type': 'staff',
-                'name': obj.sub_user.full_name,
+                'name': obj.sub_user.name,
                 'id': obj.sub_user.id,
                 'email': obj.sub_user.email
             }
         return {
             'type': 'owner',
-            'name': obj.user.full_name or obj.user.email,
+            'name': obj.user.name or obj.user.email,
             'id': obj.user.id,
             'email': obj.user.email
         }

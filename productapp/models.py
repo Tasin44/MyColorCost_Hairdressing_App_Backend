@@ -1,22 +1,8 @@
-from django.db import models
 
-# Create your models here.
-# mixapp/models.py
 from django.db import models
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from decimal import Decimal
-from authapp.models import SubUser
-from clientapp.models import Client
- 
-#======================================================================================================================================================================
-#================================================================================productapp============================================================================
-
-
-# from django.db import models
-# from django.conf import settings
-# from django.core.validators import MinValueValidator
-# from decimal import Decimal
 
 # Create your models here.
 '''
@@ -100,7 +86,6 @@ class ShopProduct(models.Model):
         help_text="Barcode for scanning"
     )
  
- 
     # Product metadata
     expiry_date = models.DateField(null=True, blank=True)
     stock_quantity = models.IntegerField(default=0) # deeps
@@ -146,10 +131,9 @@ class UserProduct(models.Model):
     """
     User's product inventory after scanning.
     Tracks products owned by each user with their custom pricing.
+    Inventory item — what each salon actually has in stock
+    One UserProduct = one bottle/tube/pack in the salon
     """
-
-    #Remember, UserProduct model only will contains the product after scanning, not the product what the use purchesed, because product user purchesed, it has to first come to his hand 
-
     id = models.AutoField(primary_key=True)
  
     # Relationships
@@ -226,7 +210,6 @@ class UserProduct(models.Model):
         self.last_used_at = models.DateTimeField(auto_now=True)
         self.save(update_fields=['current_weight_grams', 'is_available', 'last_used_at'])
  
-
 class ShoppingCart(models.Model):
     """Shopping cart for purchasing products"""
     id = models.AutoField(primary_key=True)
@@ -257,7 +240,7 @@ class ShoppingCart(models.Model):
     
     @property
     def total_price(self):
-        return self.shop_product.market_price * self.quantity
+        return self.shop_product.price * self.quantity
 
 
 class ProductScanHistory(models.Model):
@@ -281,9 +264,9 @@ class ProductScanHistory(models.Model):
     qr_code = models.CharField(max_length=100, null=True, blank=True)
     scanned_weight = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     
-    # # Location data (optional)
-    # latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    # longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    # Location data (optional)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     
     scan_type = models.CharField(max_length=20, choices=[
         ('barcode', 'Barcode'),
@@ -304,7 +287,6 @@ class ProductScanHistory(models.Model):
     def __str__(self):
         return f"{self.user.email} scanned {self.shop_product.name}"
     
-
 
 class ProductReview(models.Model):
     """
@@ -345,11 +327,6 @@ class ProductReview(models.Model):
             models.Index(fields=['product', '-created_at']),
             models.Index(fields=['user']),
         ]
-        '''
-        #Error : TypeError: CheckConstraint.__init__() got an unexpected keyword argument 'check'
-        ❌ Why this error is coming
-        You are using an old Django version that does NOT support CheckConstraint(check=...).
-
         constraints = [
             models.UniqueConstraint(
                 fields=['user', 'product'],
@@ -360,256 +337,8 @@ class ProductReview(models.Model):
                 name='rating_range_check'
             )
         ]
-    
-        '''
-
-        constraints = [
-            models.UniqueConstraint(
-                fields=['user', 'product'],
-                name='unique_user_product_review'
-            )
-        ]
         ordering = ['-created_at']
  
     def __str__(self):
         return f"{self.user.email} - {self.product.name} ({self.rating}★)"
  
-
-
-
-#=========================================================Mixapp===========================================================================================================
-#==========================================================================================================================================================================
-
-
-class Mix(models.Model):
-    """
-    Color bowl/mix created for a client.
-    Contains multiple products and tracks costs.
-    """
-    id = models.AutoField(primary_key=True)
- 
-    # Relationships
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='mixes',
-        db_index=True,
-        help_text="Salon owner"
-    )
- 
-    sub_user = models.ForeignKey(
-        SubUser,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='mixes',
-        db_index=True,
-        help_text="Staff member who created (if applicable)"
-    )
- 
-    client = models.ForeignKey(
-        Client,
-        on_delete=models.CASCADE,
-        related_name='mixes',
-        db_index=True,
-        help_text="Client this mix is for"
-    )
- 
-    # Mix details
-    mix_name = models.CharField(max_length=255, db_index=True)
-    service_type = models.CharField(max_length=100, db_index=True)
- 
-    # Financial tracking
-    charged_amount = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        null=True,
-        blank=True,
-        validators=[MinValueValidator(Decimal('0.00'))],
-        help_text="Amount charged to client"
-    )
- 
-    total_cost = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=Decimal('0.00'),
-        validators=[MinValueValidator(Decimal('0.00'))],
-        help_text="Total cost of products used"
-    )
- 
-    # Profit calculation (will be calculated in save method)
-    profit = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=Decimal('0.00'),
-        help_text="Profit = charged_amount - total_cost"
-    )
- 
-    # Creation tracking
-    created_date = models.DateField(db_index=True)
-    created_time = models.TimeField()
- 
-    # PDF export
-    pdf_url = models.CharField(max_length=500, null=True, blank=True)
- 
-    # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
- 
-    class Meta:
-        db_table = 'mixes'
-        indexes = [
-            models.Index(fields=['user', 'created_date']),
-            models.Index(fields=['client', 'created_date']),
-            models.Index(fields=['service_type']),
-            models.Index(fields=['-created_date', '-created_time']),
-        ]
-        ordering = ['-created_date', '-created_time']
- 
-    def __str__(self):
-        return f"{self.mix_name} - {self.client.name} ({self.created_date})"
- 
-    def calculate_total_cost(self):
-        """
-        Calculate total cost from all mix products.
-        Should be called after adding/updating products.
-        """
-        from django.db.models import Sum
- 
-        total = self.mix_products.aggregate(
-            total=Sum('each_item_cost')
-        )['total'] or Decimal('0.00')
- 
-        self.total_cost = total
-        self.calculate_profit()
-        self.save(update_fields=['total_cost', 'profit', 'updated_at'])
- 
-    def calculate_profit(self):
-        """Calculate profit (charged - cost)"""
-        if self.charged_amount:
-            self.profit = self.charged_amount - self.total_cost
-        else:
-            self.profit = Decimal('0.00')
- 
-    def save(self, *args, **kwargs):
-        """Override save to auto-calculate profit"""
-        self.calculate_profit()
-        super().save(*args, **kwargs)
- 
- 
-class MixProduct(models.Model):
-    """
-    Individual products used in a mix with quantities and costs.
-    """
-    id = models.AutoField(primary_key=True)
- 
-    # Relationships
-    mix = models.ForeignKey(
-        Mix,
-        on_delete=models.CASCADE,
-        related_name='mix_products',
-        db_index=True
-    )
- 
-    user_product = models.ForeignKey(
-        UserProduct,
-        on_delete=models.CASCADE,
-        related_name='mix_products',
-        db_index=True
-    )
- 
-    # Product snapshot (stored to preserve history even if product changes)
-    product_name = models.CharField(max_length=255)
- 
-    # Usage details
-    used_weight = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.01'))],
-        help_text="Weight used in grams"
-    )
- 
-    # Pricing snapshot at time of use
-    market_price = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        help_text="Market price per 100g at time of use"
-    )
- 
-    user_price = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        help_text="User's price per 100g at time of use"
-    )
- 
-    # Cost calculation: (user_price * used_weight) / 100
-    each_item_cost = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=Decimal('0.00'),
-        help_text="Cost for this item"
-    )
- 
-    # Bleach timer (for bleach products)
-    bleach_timer_started_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When bleach timer was started"
-    )
- 
-    class Meta:
-        db_table = 'mix_products'
-        indexes = [
-            models.Index(fields=['mix']),
-            models.Index(fields=['user_product']),
-        ]
-        ordering = ['id']
- 
-    def __str__(self):
-        return f"{self.product_name} - {self.used_weight}g in {self.mix.mix_name}"
- 
-    def calculate_cost(self):
-        """
-        Calculate cost based on used weight and user price.
-        Formula: (user_price * used_weight) / 100
-        """
-        self.each_item_cost = (
-            self.user_price * self.used_weight
-        ) / Decimal('100')
- 
-    def save(self, *args, **kwargs):
-        """Override save to auto-calculate cost"""
-        self.calculate_cost()
-        super().save(*args, **kwargs)
- 
- 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

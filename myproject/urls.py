@@ -21,7 +21,9 @@ from django.conf import settings
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('auth/',include('authapp.urls'))
+    path('auth/',include('authapp.urls')),
+    path('client/',include('clientapp.urls')),
+    path('mix/',include('mixapp.urls'))
 ]
 if settings.DEBUG:
     urlpatterns += static(

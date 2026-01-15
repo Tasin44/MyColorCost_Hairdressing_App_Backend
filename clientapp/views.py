@@ -136,15 +136,14 @@ class ClientListCreateView(StandardResponseMixin, APIView):
         Create new client.
         Client is associated with the logged-in user (salon owner).
         """
-        serializer = ClientCreateUpdateSerializer(data=request.data)
+        serializer = ClientCreateUpdateSerializer(data=request.data,context={'request': request})
         
         if serializer.is_valid():
             # Create client and associate with user
             client = serializer.save(
                 user=request.user,
                 sub_user=None  # Set if request is from staff
-            )
-            
+            )     
             # Return detailed client data
             detail_serializer = ClientDetailSerializer(
                 client,
@@ -225,8 +224,10 @@ class ClientDetailView(StandardResponseMixin, APIView):
         serializer = ClientCreateUpdateSerializer(
             client,
             data=request.data,
-            partial=True
+            partial=True,
+            context={'request': request}
         )
+        # serializer = ClientCreateUpdateSerializer(data=request.data)
         
         if serializer.is_valid():
             client = serializer.save()
@@ -306,16 +307,32 @@ class ClientImageUploadView(StandardResponseMixin, APIView):
         
         if serializer.is_valid():
             # Save image associated with client
-            image = serializer.save(client=client)
+            # image = serializer.save(client=client)
             
-            # Return image data
-            image_serializer = ClientImageSerializer(
-                image,
-                context={'request': request}
-            )
-            
+            # # Return image data
+            # image_serializer = ClientImageSerializer(
+            #     image,
+            #     context={'request': request}
+            # )
+            files = request.FILES.getlist('image')
+            if not files:
+                return Response(
+                    {"error": "No images provided"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            created_images = []
+
+            for file in files:
+                img = ClientImage.objects.create(
+                    client=client,
+                    image=file,
+                    image_type=request.data.get('image_type')
+                )
+                created_images.append(img)  
+            serializer=ClientImageSerializer(created_images, many=True)
             return self.success_response(
-                data=image_serializer.data,
+                data=serializer.data,
                 message="Image uploaded successfully",
                 status_code=201
             )

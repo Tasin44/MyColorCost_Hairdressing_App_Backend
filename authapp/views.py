@@ -106,7 +106,8 @@ class SignupView(StandardResponseMixin, APIView):
                 "contact_number":user.contact_number,
             }
 
-            if user.role == "salon_owner":
+            # if user.role == "salon_owner":
+            if user.role == "owner":
                 data["account_type"] = user.account_type
 
             return self.success_response(
