@@ -5,6 +5,7 @@ from django.db import models
 from django.db import models
 from django.conf import settings
 from django.core.validators import MinValueValidator
+from django.utils import timezone
 from decimal import Decimal
 from authapp.models import SubUser
 from clientapp.models import Client
@@ -412,6 +413,8 @@ class Mix(models.Model):
         on_delete=models.CASCADE,
         related_name='mixes',
         db_index=True,
+        null=True,
+        blank=True,
         help_text="Client this mix is for"
     )
  
@@ -467,7 +470,8 @@ class Mix(models.Model):
         ordering = ['-created_date', '-created_time']
  
     def __str__(self):
-        return f"{self.mix_name} - {self.client.name} ({self.created_date})"
+        client_name = self.client.name if self.client else "No Client"
+        return f"{self.mix_name} - {client_name} ({self.created_date})"
  
     def calculate_total_cost(self):
         """
@@ -482,6 +486,7 @@ class Mix(models.Model):
  
         self.total_cost = total
         self.calculate_profit()
+        # ✅ Only update specific fields, don't trigger MixProduct saves
         self.save(update_fields=['total_cost', 'profit', 'updated_at'])
  
     def calculate_profit(self):
@@ -493,7 +498,12 @@ class Mix(models.Model):
  
     def save(self, *args, **kwargs):
         """Override save to auto-calculate profit"""
-        self.calculate_profit()
+        if not self.pk:
+            now = timezone.now()
+            self.created_date = now.date()
+            self.created_time = now.time()
+        if self.charged_amount is not None:
+            self.calculate_profit()
         super().save(*args, **kwargs)
  
  
@@ -551,12 +561,24 @@ class MixProduct(models.Model):
     )
  
     # Bleach timer (for bleach products)
-    bleach_timer_started_at = models.DateTimeField(
+    # bleach_timer_started_at = models.DateTimeField(
+    #     null=True,
+    #     blank=True,
+    #     help_text="When bleach timer was started"
+    # )
+    is_bleach_timer_on = models.BooleanField(default=False)
+    bleach_timer_started_at = models.CharField(  # ✅ Changed to CharField
+        max_length=50,
+        null=True,
+        blank=True
+    )
+    
+    bleach_timer_duration = models.CharField(   # ✅ NEW
+        max_length=30,
         null=True,
         blank=True,
-        help_text="When bleach timer was started"
+        help_text="e.g. 30 min, 1 hour"
     )
- 
     class Meta:
         db_table = 'mix_products'
         indexes = [
@@ -578,11 +600,10 @@ class MixProduct(models.Model):
         ) / Decimal('100')
  
     def save(self, *args, **kwargs):
-        """Override save to auto-calculate cost"""
+        # if not self.pk and not self.bleach_timer_started_at:
+        #     self.bleach_timer_started_at = timezone.now().isoformat()
         self.calculate_cost()
         super().save(*args, **kwargs)
- 
- 
 
 
 

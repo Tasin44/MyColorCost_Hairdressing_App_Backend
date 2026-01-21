@@ -6,11 +6,12 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
+from rest_framework.viewsets import ModelViewSet
 from django.db import transaction
 from django.db.models import Q, Sum, Count, Avg
 from django.utils import timezone
 from datetime import timedelta
- 
+from rest_framework.decorators import action
 from .models import ShopProduct, UserProduct, Mix, MixProduct, ProductReview
 from clientapp.models import Client
 from .serializers import (
@@ -19,7 +20,7 @@ from .serializers import (
     MixListSerializer, MixDetailSerializer, CreateMixSerializer,
     UpdateMixSerializer, AddProductToMixSerializer,
     MixProductSerializer, ProductReviewSerializer,
-    CreateProductReviewSerializer, MixStatsSerializer
+    CreateProductReviewSerializer, MixStatsSerializer,AssignClientSerializer
 )
  
  
@@ -505,11 +506,17 @@ class MixListCreateView(StandardResponseMixin, APIView):
         # Date range filter
         from_date = request.query_params.get('from_date')
         to_date = request.query_params.get('to_date')
- 
+
+        '''
         if from_date:
             queryset = queryset.filter(created_date__gte=from_date)
         if to_date:
             queryset = queryset.filter(created_date__lte=to_date)
+        '''
+        if from_date:
+            queryset = queryset.filter(created_at__date__gte=from_date)
+        if to_date:
+            queryset = queryset.filter(created_at__date__lte=to_date)
  
         # Order by most recent
         queryset = queryset.order_by('-created_date', '-created_time')
@@ -714,27 +721,43 @@ class MixAddProductView(StandardResponseMixin, APIView):
         validated_data = serializer.validated_data
         user_product = validated_data['user_product']
         used_weight = validated_data['used_weight']
-        start_bleach_timer = validated_data.get('start_bleach_timer', False)
- 
+        # start_bleach_timer = validated_data.get('start_bleach_timer', False)
+        market_price = validated_data['market_price']
+        charged_amount = validated_data['charged_amount']
+        # start_bleach_timer = validated_data.get('start_bleach_timer', False)
+        is_bleach_timer_on = validated_data['is_bleach_timer_on']
+        bleach_timer_started_at = validated_data.get('bleach_timer_started_at')
+        bleach_timer_duration = validated_data.get('bleach_timer_duration')
         # Create mix product entry
         mix_product = MixProduct.objects.create(
             mix=mix,
             user_product=user_product,
             product_name=user_product.product.name,
             used_weight=used_weight,
-            market_price=user_product.product.market_price,
+            # market_price=user_product.product.market_price,
+            market_price=market_price,   # ✅ USE REQUEST VALUE
             user_price=user_product.user_price,
-            bleach_timer_started_at=timezone.now() if start_bleach_timer else None
+            #bleach_timer_started_at=timezone.now().isoformat()
+            #bleach_timer_started_at=timezone.now()
+            is_bleach_timer_on=is_bleach_timer_on,
+            bleach_timer_started_at=bleach_timer_started_at if is_bleach_timer_on else None,
+            bleach_timer_duration=bleach_timer_duration if is_bleach_timer_on else None
         )
- 
+        mix.charged_amount = charged_amount
+        #mix.save(update_fields=['charged_amount'])
+        mix.save(update_fields=['charged_amount', 'updated_at'])  # ✅ Specify fields
+
         # Reduce product weight in inventory
         user_product.reduce_weight(used_weight)
- 
+
+
         # Recalculate mix total cost
         mix.calculate_total_cost()
  
         # Update client statistics
-        mix.client.update_stats()
+        #mix.client.update_stats()
+        if mix.client:  # ✅ Add this check
+            mix.client.update_stats()
  
         # Return updated mix details
         mix_serializer = MixDetailSerializer(
@@ -810,6 +833,7 @@ class MixStatsView(StandardResponseMixin, APIView):
         user = request.user
  
         # Get current month
+       # now = timezone.now().isoformat()
         now = timezone.now()
         first_day_of_month = now.replace(day=1).date()
  
@@ -850,4 +874,40 @@ class MixStatsView(StandardResponseMixin, APIView):
  
  
 
- 
+class MixViewSet(ModelViewSet):
+    queryset = Mix.objects.all()
+    serializer_class = CreateMixSerializer
+
+    @action(detail=True, methods=['post'], url_path='assign-client')
+    def assign_client(self, request, pk=None):
+        mix = self.get_object()
+        serializer = AssignClientSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        client_id = serializer.validated_data['client_id']
+
+        try:
+            client = Client.objects.get(
+                id=client_id,
+                user=request.user
+            )
+        except Client.DoesNotExist:
+            return Response(
+                {"error": "Client not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        mix.client = client
+        mix.save(update_fields=['client'])
+
+        return Response(
+            {
+                "message": "Client assigned to mix successfully",
+                "mix_id": mix.id,
+                "client_id": client.id
+            },
+            status=status.HTTP_200_OK
+        )
+    
+
+

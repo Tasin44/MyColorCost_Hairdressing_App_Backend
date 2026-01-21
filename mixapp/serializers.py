@@ -218,16 +218,23 @@ class InventoryStatsSerializer(serializers.Serializer):
 #==========================================================================================================================================================================
 class MixProductSerializer(serializers.ModelSerializer):
     """Serializer for products within a mix"""
- 
+    # # bleach_timer_started_at = serializers.DateTimeField(
+    # #     format='%Y-%m-%d %H:%M:%S',  # or use iso-8601 format
+    # #     required=False,
+    # #     allow_null=True
+    # # )
+    # bleach_timer_started_at = serializers.SerializerMethodField()
     class Meta:
         model = MixProduct
         fields = [
             'id', 'product_name', 'used_weight', 'market_price',
-            'user_price', 'each_item_cost', 'bleach_timer_started_at'
+            'user_price', 'each_item_cost','is_bleach_timer_on','bleach_timer_started_at','bleach_timer_duration'
         ]
         read_only_fields = ['id', 'each_item_cost']
  
- 
+    # def get_bleach_timer_started_at(self, obj):
+    #     return obj.bleach_timer_started_at.isoformat() if obj.bleach_timer_started_at else None
+    
 class AddProductToMixSerializer(serializers.Serializer):
     """Serializer for adding a product to a mix"""
     user_product_id = serializers.IntegerField()
@@ -236,8 +243,16 @@ class AddProductToMixSerializer(serializers.Serializer):
         decimal_places=2,
         min_value=Decimal('0.01')
     )
-    start_bleach_timer = serializers.BooleanField(default=False)
- 
+    #start_bleach_timer = serializers.BooleanField(default=False)
+    market_price = serializers.DecimalField(max_digits=10, decimal_places=2)
+    charged_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    bleach_timer_started_at = serializers.CharField(required=False,
+    allow_null=True)
+    is_bleach_timer_on = serializers.BooleanField()
+    bleach_timer_duration = serializers.CharField(   # ✅ ADD
+        required=False,
+        allow_null=True
+    )
     def validate_user_product_id(self, value):
         """Validate user product exists and is available"""
         user = self.context['request'].user
@@ -307,14 +322,14 @@ class MixListSerializer(serializers.ModelSerializer):
 class MixDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for single mix view"""
     client_name = serializers.CharField(source='client.name', read_only=True)
-    client_id = serializers.IntegerField(source='client.id', read_only=True)
+    # client_id = serializers.IntegerField(source='client.id', read_only=True)
     products = MixProductSerializer(source='mix_products', many=True, read_only=True)
     created_by = serializers.SerializerMethodField()
  
     class Meta:
         model = Mix
         fields = [
-            'id', 'mix_name', 'client_id', 'client_name',
+            'id', 'mix_name', 'client_name',
             'service_type', 'charged_amount', 'total_cost',
             'profit', 'created_date', 'created_time',
             'pdf_url', 'products', 'created_by', 'created_at'
@@ -337,25 +352,27 @@ class MixDetailSerializer(serializers.ModelSerializer):
  
 class CreateMixSerializer(serializers.ModelSerializer):
     """Serializer for creating a new mix"""
-    client_id = serializers.IntegerField(write_only=True)
- 
+    # client_id = serializers.IntegerField(write_only=True)
+    created_date = serializers.SerializerMethodField()
+    created_time = serializers.SerializerMethodField()
+
     class Meta:
         model = Mix
         fields = [
-            'mix_name', 'client_id', 'service_type',
-            'charged_amount', 'created_date', 'created_time'
+            'mix_name', 'service_type', 'created_date', 'created_time'
         ]
- 
+    
+    '''
     def validate_client_id(self, value):
-        """Validate client exists and belongs to user"""
         user = self.context['request'].user
- 
         try:
             Client.objects.get(id=value, user=user)
         except Client.DoesNotExist:
             raise serializers.ValidationError("Client not found")
  
         return value
+    '''
+
  
     def validate_mix_name(self, value):
         """Validate mix name"""
@@ -363,24 +380,30 @@ class CreateMixSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Mix name is required")
         return value.strip()
  
-    def validate_charged_amount(self, value):
-        """Validate charged amount if provided"""
-        if value is not None and value < 0:
-            raise serializers.ValidationError("Charged amount cannot be negative")
-        return value
- 
+    # def validate_charged_amount(self, value):
+    #     """Validate charged amount if provided"""
+    #     if value is not None and value < 0:
+    #         raise serializers.ValidationError("Charged amount cannot be negative")
+    #     return value
+
+    def get_created_date(self, obj):
+        return obj.created_at.date()
+
+    def get_created_time(self, obj):
+        return obj.created_at.time()
+    
     @transaction.atomic
     def create(self, validated_data):
         """Create mix"""
         user = self.context['request'].user
-        client_id = validated_data.pop('client_id')
-        client = Client.objects.get(id=client_id)
+        #client_id = validated_data.pop('client_id')
+      #  client = Client.objects.get(id=client_id)
  
         # Create mix
         mix = Mix.objects.create(
             user=user,
             sub_user=None,  # Set if request from staff
-            client=client,
+            #client=client,
             **validated_data
         )
  
@@ -392,7 +415,8 @@ class UpdateMixSerializer(serializers.ModelSerializer):
  
     class Meta:
         model = Mix
-        fields = ['mix_name', 'service_type', 'charged_amount']
+        # fields = ['mix_name', 'service_type', 'charged_amount']
+        fields = ['mix_name', 'service_type']
  
     def validate_charged_amount(self, value):
         """Validate charged amount"""
@@ -466,7 +490,8 @@ class MixStatsSerializer(serializers.Serializer):
     most_used_service_type = serializers.CharField()
  
 
-
+class AssignClientSerializer(serializers.Serializer):
+    client_id = serializers.IntegerField()
 
 
 
