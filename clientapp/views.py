@@ -68,7 +68,21 @@ class ClientListCreateView(StandardResponseMixin, APIView):
         # For now, we assume all requests are from main users
         
         # Salon owner sees all clients
-        queryset = queryset.filter(user=user)
+        #queryset = queryset.filter(user=user)
+        # ✅ FIX: Owner sees ALL clients (own + staff clients)
+        if user.role == 'owner':
+            # Owner sees all clients under their account
+            queryset = queryset.filter(user=user)
+        elif user.role == 'staff' and hasattr(user, 'staff_profile'):
+            # Staff sees only their own clients
+            staff_profile = user.staff_profile
+            queryset = queryset.filter(
+                user=staff_profile.main_user,  # Owner's clients
+                sub_user=staff_profile  # Only this staff's clients
+            )
+        else:
+            # Fallback: show user's own clients()
+            queryset = queryset.filter(user=user)
         
         return queryset
     
@@ -134,16 +148,37 @@ class ClientListCreateView(StandardResponseMixin, APIView):
     def post(self, request):
         """
         Create new client.
-        Client is associated with the logged-in user (salon owner).
+        Previoulsy -Client is associated with the logged-in user (salon owner).
+        Now- Client is associated with the owner, but tracks which staff created it.
         """
         serializer = ClientCreateUpdateSerializer(data=request.data,context={'request': request})
         
         if serializer.is_valid():
+            user = request.user
+            
+            # ✅ FIX: Determine owner and sub_user based on role
+            if user.role == 'staff' and hasattr(user, 'staff_profile'):
+                # Staff creating client
+                staff_profile = user.staff_profile
+                owner = staff_profile.main_user
+                sub_user = staff_profile
+            else:
+                # Owner creating client
+                owner = user
+                sub_user = None
+
             # Create client and associate with user
+            client = serializer.save(
+                user=owner,      # ✅ Use owner, not request.user
+                sub_user=sub_user  # ✅ Use calculated sub_user
+            )
+            '''
             client = serializer.save(
                 user=request.user,
                 sub_user=None  # Set if request is from staff
-            )     
+            )  
+            '''
+   
             # Return detailed client data
             detail_serializer = ClientDetailSerializer(
                 client,
@@ -330,7 +365,7 @@ class ClientImageUploadView(StandardResponseMixin, APIView):
                     image_type=request.data.get('image_type')
                 )
                 created_images.append(img)  
-            serializer=ClientImageSerializer(created_images, many=True)
+            serializer=ClientImageSerializer(created_images, many=True , context={"request": request})
             return self.success_response(
                 data=serializer.data,
                 message="Image uploaded successfully",

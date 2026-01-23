@@ -25,17 +25,24 @@ class ClientImageSerializer(serializers.ModelSerializer):
 
 class ClientImageUploadSerializer(serializers.ModelSerializer):
     """Serializer for uploading client images"""
-    
+    image_url = serializers.SerializerMethodField()
     class Meta:
         model = ClientImage
-        fields = ['image_type', 'image']
+        fields = ['image_type', 'image' ,'image_url']
     
     def validate_image_type(self, value):
         """Validate image type"""
         if value not in ['before', 'after']:
             raise serializers.ValidationError("Image type must be 'before' or 'after'")
         return value
-
+    def get_image_url(self, obj):
+        """Get absolute URL for image"""
+        if obj.image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+            return obj.image.url
+        return None
 
 class ClientListSerializer(serializers.ModelSerializer):
     """

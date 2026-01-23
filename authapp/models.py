@@ -10,7 +10,8 @@ class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     # Add role field
     ROLE_CHOICES = (
-        ('owner', 'Salon Owner'),
+        ('owner', 'Salon Owner'),#Salon Owner with Staff
+        ('self_employed', 'Self-employed Hairdresser'),
         ('staff', 'Salon Staff'),
         ('retailer', 'Retailer'),
     )
@@ -49,17 +50,17 @@ class User(AbstractUser):
     updated_at = models.DateTimeField(auto_now=True)
 
     # Account type configuration
-    ACCOUNT_TYPE_CHOICES = (
-        ('salon_owner_with_staff', 'Salon Owner with Staff'),
-        ('self_employed', 'Self-employed Hairdresser'),
-    )
-    account_type = models.CharField(
-        max_length=30, 
-        choices=ACCOUNT_TYPE_CHOICES,
-        null=True,  # Will be set after OTP verification
-        blank=True,
-        db_index=True
-    )
+    # ACCOUNT_TYPE_CHOICES = (
+    #     ('salon_owner_with_staff', 'Salon Owner with Staff'),
+    #     ('self_employed', 'Self-employed Hairdresser'),
+    # )
+    # account_type = models.CharField(
+    #     max_length=30, 
+    #     choices=ACCOUNT_TYPE_CHOICES,
+    #     null=True,  # Will be set after OTP verification
+    #     blank=True,
+    #     db_index=True
+    # )
     # Resolve reverse accessor conflicts
     groups = models.ManyToManyField(
         'auth.Group', 
@@ -76,15 +77,17 @@ class User(AbstractUser):
         db_table = 'users'
         indexes = [
             models.Index(fields=['email']),
-            models.Index(fields=['account_type']),
+            # models.Index(fields=['account_type']),
         ]
 
     def __str__(self):
-        return f"{self.email} ({self.get_account_type_display()})"
+        #return f"{self.email} ({self.get_account_type_display()})"
+        return f"{self.email} ({self.get_role_display()})"
     
     def can_add_staff(self):
         """Check if user can add more staff members"""
-        if self.account_type != 'salon_owner_with_staff':
+        # if self.account_type != 'salon_owner_with_staff':
+        if self.role != 'owner':  # ✅ Changed
             return False
         
         current_staff_count = self.sub_users.filter(is_active=True).count()
@@ -166,7 +169,7 @@ class SubUser(models.Model):
     email = models.EmailField(unique=True, db_index=True)
     
     # Status
-    is_active = models.BooleanField(default=True, db_index=True)
+    is_active = models.BooleanField(default=False, db_index=True)
     
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)

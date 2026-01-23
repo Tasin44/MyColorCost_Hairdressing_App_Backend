@@ -3,7 +3,7 @@ from django.urls import path
 from .views import (
     SignupView, VerifyOTPView, ResendOTPView, LoginView,
     ForgotPasswordView, ResetPasswordView, ProfileUpdateView,
-    DeleteUserView, MeView, AccountTypeSetupView,
+    DeleteUserView, MeView, TeamSetupView,
     SubUserListCreateView, SubUserDetailView
 )
 
@@ -24,9 +24,10 @@ urlpatterns = [
     path('me/', MeView.as_view(), name='me'),
 
     # Account type setup
-    path('account-type/setup/', AccountTypeSetupView.as_view(), name='account-type-setup'),
+    # path('account-type/setup/', AccountTypeSetupView.as_view(), name='account-type-setup'),
 
     # Sub-user management
+    path('team/setup/', TeamSetupView.as_view(), name='team-setup'),
     path('sub-users/', SubUserListCreateView.as_view(), name='sub-user-list-create'),
     path('sub-users/<uuid:sub_user_id>/', SubUserDetailView.as_view(), name='sub-user-detail'),
 ]

@@ -7,42 +7,43 @@ from .models import User, SubUser, OTP
 from rest_framework import serializers
 from django.core.mail import send_mail
 from django.utils import timezone
+from django.db import transaction
 from datetime import timedelta
 import random
 import string
 from .utils import validate_and_get_otp
 
 
-class AccountTypeSelectionSerializer(serializers.Serializer):
-    account_type = serializers.ChoiceField(
-        # choices=[
-        #     ('salon_owner_with_staff', 'Salon Owner with Staff'),
-        #     ('self_employed', 'Self-employed Hairdresser'),
-        # ]
-        choices=User.ACCOUNT_TYPE_CHOICES
-    )
-    staff_limit = serializers.IntegerField(min_value=0, default=0, required=False)
+# class AccountTypeSelectionSerializer(serializers.Serializer):
+#     account_type = serializers.ChoiceField(
+#         # choices=[
+#         #     ('salon_owner_with_staff', 'Salon Owner with Staff'),
+#         #     ('self_employed', 'Self-employed Hairdresser'),
+#         # ]
+#         choices=User.ACCOUNT_TYPE_CHOICES
+#     )
+#     staff_limit = serializers.IntegerField(min_value=0, default=0, required=False)
 
-    def validate(self, data):
-        account_type = data['account_type']
-        staff_count = data.get('staff_limit', 0)
+#     def validate(self, data):
+#         account_type = data['account_type']
+#         staff_count = data.get('staff_limit', 0)
         
-        if account_type == 'salon_owner_with_staff' and staff_count <=0:
-            raise serializers.ValidationError(
-                {"staff_count": "Staff count is required for salon owner with staff."}
-            )
-        return data #❌Without this return , I got error : AssertionError: .validate() should return the validated data, because validate(self, data) → must return data
-    #❓❓ why using update() here?
-    '''
-    validate() method references staff_count = data.get('staff_limit', 0) but you also pass staff_limit in serializer. Make sure this doesn’t conflict with save() method.
+#         if account_type == 'salon_owner_with_staff' and staff_count <=0:
+#             raise serializers.ValidationError(
+#                 {"staff_count": "Staff count is required for salon owner with staff."}
+#             )
+#         return data #❌Without this return , I got error : AssertionError: .validate() should return the validated data, because validate(self, data) → must return data
+#     #❓❓ why using update() here?
+#     '''
+#     validate() method references staff_count = data.get('staff_limit', 0) but you also pass staff_limit in serializer. Make sure this doesn’t conflict with save() method.
 
-    Currently, serializer.save() in AccountTypeSetupView won’t actually save anything unless you define update() method in serializer. So user.account_type may remain None.
-    '''
-    def update(self, instance, validated_data):
-        instance.account_type = validated_data['account_type']
-        instance.staff_limit = validated_data.get('staff_limit', 0)
-        instance.save()
-        return instance
+#     Currently, serializer.save() in AccountTypeSetupView won’t actually save anything unless you define update() method in serializer. So user.account_type may remain None.
+#     '''
+#     def update(self, instance, validated_data):
+#         instance.account_type = validated_data['account_type']
+#         instance.staff_limit = validated_data.get('staff_limit', 0)
+#         instance.save()
+#         return instance
 
 class SignupSerializer(serializers.Serializer):
     role = serializers.ChoiceField(choices=User.ROLE_CHOICES)
@@ -95,7 +96,8 @@ class SignupSerializer(serializers.Serializer):
             staff_email = data.get('email').lower().strip()
 
             try:
-                owner = User.objects.get(email=owner_email, account_type='salon_owner_with_staff')
+                #owner = User.objects.get(email=owner_email, account_type='salon_owner_with_staff')
+                owner = User.objects.get(email=owner_email, role='owner')
             except User.DoesNotExist:
                 raise serializers.ValidationError({"owner_email": "Owner not found."})
 
@@ -163,6 +165,7 @@ class SignupSerializer(serializers.Serializer):
             sub_user.name = name
             sub_user.contact_number = contact_number
             sub_user.status = 'ACTIVE'
+            # sub_user.is_active = True
             sub_user.save()
         # Generate and send OTP
         otp_code = ''.join(random.choices(string.digits, k=6))
@@ -279,16 +282,17 @@ class ResetPasswordSerializer(serializers.Serializer):
     
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):
-    image=serializers.SerializerMethodField()
+    # image=serializers.SerializerMethodField()
+    image = serializers.ImageField(required=False)
     class Meta:
         model = User
         fields = ["name", "image","contact_number"]
 
-    def get_image(self,obj):
-        request = self.context.get("request")
-        if obj.image and request:
-            return request.build_absolute_uri(obj.image.url)
-        return None
+    # def get_image(self,obj):
+    #     request = self.context.get("request")
+    #     if obj.image and request:
+    #         return request.build_absolute_uri(obj.image.url)
+    #     return None
 '''
 class DeleteUserSerializer(serializers.Serializer):
     confirm = serializers.BooleanField()
@@ -319,18 +323,20 @@ class MeSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'email', 'name', 'image', 'contact_number','role',
-            'account_type', 'staff_limit', 'notification_enabled',
+             'staff_limit', 'notification_enabled',
             'verified', 'sub_users_count', 'can_create_staff',
             'created_at'
         ]
     
     def get_sub_users_count(self, obj):
-        if obj.account_type == 'salon_owner_with_staff':
+        # if obj.account_type == 'salon_owner_with_staff':
+        if obj.role == 'owner':  # ✅ Changed
             return obj.sub_users.filter(is_active=True).count()
         return 0
     
     def get_can_create_staff(self, obj):
-        if obj.account_type == 'salon_owner_with_staff':
+        # if obj.account_type == 'salon_owner_with_staff':
+        if obj.role == 'owner':  # ✅ Changed
             current_staff_count = obj.sub_users.filter(is_active=True).count()
             return current_staff_count < obj.staff_limit
         return False
@@ -385,7 +391,82 @@ class SubUserCreateSerializer(serializers.ModelSerializer):
 
 
 
-
+class TeamSetupSerializer(serializers.Serializer):
+    user_id = serializers.UUIDField()  # ✅ Changed to UUIDField
+    staff_limit = serializers.IntegerField(min_value=0)
+    staff_emails = serializers.ListField(
+        child=serializers.EmailField(),
+        required=False,
+        allow_empty=True
+    )
+    
+    def validate_user_id(self, value):
+        try:
+            user = User.objects.get(id=value, role='owner', verified=True)
+        except User.DoesNotExist:
+            raise serializers.ValidationError("Owner user not found or not verified.")
+        
+        if user.staff_limit is not None and user.staff_limit > 0:
+            raise serializers.ValidationError("Team setup already completed for this owner.")
+        
+        return value
+    
+    def validate(self, data):
+        staff_emails = data.get('staff_emails', [])
+        staff_limit = data['staff_limit']
+        
+        # Validate staff emails count
+        if len(staff_emails) > staff_limit:
+            raise serializers.ValidationError(
+                {"staff_emails": f"Cannot add more than {staff_limit} staff emails."}
+            )
+        
+        # Check for duplicate emails
+        if len(staff_emails) != len(set(staff_emails)):
+            raise serializers.ValidationError(
+                {"staff_emails": "Duplicate staff emails are not allowed."}
+            )
+        
+        # Validate staff emails don't conflict with existing users
+        for staff_email in staff_emails:
+            staff_email = staff_email.lower().strip()
+            if User.objects.filter(email=staff_email, verified=True).exists():
+                raise serializers.ValidationError(
+                    {"staff_emails": f"Email {staff_email} is already registered."}
+                )
+        
+        return data
+    
+    @transaction.atomic
+    def save(self):
+        user_id = self.validated_data['user_id']
+        staff_limit = self.validated_data['staff_limit']
+        staff_emails = self.validated_data.get('staff_emails', [])
+        
+        user = User.objects.get(id=user_id)
+        user.staff_limit = staff_limit
+        user.save(update_fields=['staff_limit'])
+        
+        # Create pre-registered staff entries
+        created_staff = []
+        for staff_email in staff_emails:
+            staff_email = staff_email.lower().strip()
+            sub_user = SubUser.objects.create(
+                main_user=user,
+                email=staff_email,
+                name="",  # Will be set when staff signs up
+                status='PENDING'
+            )
+            created_staff.append({
+                "email": sub_user.email,
+                "status": sub_user.status
+            })
+        
+        return {
+            "user_id": str(user.id),
+            "staff_limit": user.staff_limit,
+            "pre_registered_staff": created_staff
+        }
 
 
 

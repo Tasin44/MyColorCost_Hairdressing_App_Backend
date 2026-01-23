@@ -3,10 +3,11 @@
 from rest_framework import serializers
 from django.db import transaction
 from django.utils import timezone
+from django.core.validators import MinValueValidator
 from decimal import Decimal
-from .models import ShopProduct, UserProduct, ProductReview
+from .models import ShopProduct, UserProduct, ProductReview, ShoppingCart
 from clientapp.models import Client
-
+from mixapp.serializers import ShopProductDetailSerializer
 
 class ShoppingCartSerializer(serializers.ModelSerializer):
     shop_product = ShopProductDetailSerializer(read_only=True)

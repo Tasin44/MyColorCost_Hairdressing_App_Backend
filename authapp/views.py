@@ -15,10 +15,11 @@ import random
 import string
 
 from .serializers import (
-    SignupSerializer, AccountTypeSelectionSerializer, VerifyOTPSerializer, 
+    SignupSerializer, VerifyOTPSerializer, 
     ResendOTPSerializer, LoginSerializer, ForgotPasswordSerializer, 
     ResetPasswordSerializer, ProfileUpdateSerializer, ConfirmDeleteUserSerializer,
-    MeSerializer, SubUserSerializer, SubUserCreateSerializer,SubUserInviteResponseSerializer
+    MeSerializer, SubUserSerializer, SubUserCreateSerializer, SubUserInviteResponseSerializer,
+    TeamSetupSerializer
 )
 from .models import OTP, SubUser
 
@@ -107,8 +108,8 @@ class SignupView(StandardResponseMixin, APIView):
             }
 
             # if user.role == "salon_owner":
-            if user.role == "owner":
-                data["account_type"] = user.account_type
+            # if user.role == "owner":
+            #     data["account_type"] = user.account_type
 
             return self.success_response(
                 data=data,
@@ -136,7 +137,11 @@ class VerifyOTPView(StandardResponseMixin, APIView):
             
             otp.is_used = True
             otp.save(update_fields=['is_used'])
-            
+            # ✅ ADD THIS: Activate SubUser if staff
+            if user.role == 'staff' and hasattr(user, 'staff_profile'):
+                staff = user.staff_profile
+                staff.is_active = True
+                staff.save(update_fields=['is_active'])           
             refresh = RefreshToken.for_user(user)
             return self.success_response(
                 {
@@ -207,7 +212,7 @@ class LoginView(StandardResponseMixin, APIView):
                         "id": str(user.id),
                         "email": user.email,
                         "name": user.name,
-                        "account_type": user.account_type,
+                        "account_type": user.role,
                     }
                 },
                 message="Login successful.",
@@ -294,7 +299,12 @@ class ProfileUpdateView(APIView):
             image_url=None
             if user.image:
                 image_url=request.build_absolute_uri(user.image.url)
-
+            # 🔴 sync SubUser
+            if hasattr(user, 'staff_profile'):
+                staff = user.staff_profile
+                staff.name = user.name
+                staff.contact_number = user.contact_number
+                staff.save(update_fields=['name', 'contact_number'])
             return Response({
                 "message": "Profile updated",
                 "user": {
@@ -346,44 +356,44 @@ class MeView(APIView):
 
 
 
-class AccountTypeSetupView(StandardResponseMixin, APIView):
-    """
-    Set account type after OTP verification.
-    Required before user can access main features.
-    """
-    permission_classes = [IsAuthenticated]
+# class AccountTypeSetupView(StandardResponseMixin, APIView):
+#     """
+#     Set account type after OTP verification.
+#     Required before user can access main features.
+#     """
+#     permission_classes = [IsAuthenticated]
     
-    @transaction.atomic
-    def post(self, request):
-        # Check if account type is already set
-        if request.user.account_type:
-            return self.error_response(
-                "Account type is already configured.",
-                status_code=400
-            )
+#     @transaction.atomic
+#     def post(self, request):
+#         # Check if account type is already set
+#         if request.user.account_type:
+#             return self.error_response(
+#                 "Account type is already configured.",
+#                 status_code=400
+#             )
         
-        serializer = AccountTypeSelectionSerializer(
-            instance=request.user,
-            data=request.data
-        )
+#         serializer = AccountTypeSelectionSerializer(
+#             instance=request.user,
+#             data=request.data
+#         )
         
-        if serializer.is_valid():
-            user = serializer.save()
+#         if serializer.is_valid():
+#             user = serializer.save()
             
-            return self.success_response(
-                data={
-                    "account_type": user.account_type,
-                    "staff_limit": user.staff_limit
-                },
-                message="Account setup completed successfully.",
-                status_code=200
-            )
+#             return self.success_response(
+#                 data={
+#                     "account_type": user.account_type,
+#                     "staff_limit": user.staff_limit
+#                 },
+#                 message="Account setup completed successfully.",
+#                 status_code=200
+#             )
         
-        return self.error_response(
-            "Account setup failed",
-            status_code=400,
-            data=serializer.errors
-        )
+#         return self.error_response(
+#             "Account setup failed",
+#             status_code=400,
+#             data=serializer.errors
+#         )
 
 
 class SubUserListCreateView(StandardResponseMixin, APIView):
@@ -397,11 +407,11 @@ class SubUserListCreateView(StandardResponseMixin, APIView):
         """Get all staff members for the salon owner"""
         user = request.user
         # Check if user can have staff
-        if user.account_type != 'salon_owner_with_staff':
-            return self.error_response(
-                "Your account type does not support staff management,only salon owners with staff can manage sub-users",
-                status_code=403
-            )
+        # if user.account_type != 'salon_owner_with_staff':
+        #     return self.error_response(
+        #         "Your account type does not support staff management,only salon owners with staff can manage sub-users",
+        #         status_code=403
+        #     )
         
         # Check staff limit
         # current_staff_count = user.sub_users.filter(is_active=True).count()
@@ -432,11 +442,11 @@ class SubUserListCreateView(StandardResponseMixin, APIView):
         """Create new staff member"""
         user = request.user
         # Check if user can have staff
-        if user.account_type != 'salon_owner_with_staff':
-            return self.error_response(
-                "Your account type does not support staff management.",
-                status_code=403
-            )
+        # if user.account_type != 'salon_owner_with_staff':
+        #     return self.error_response(
+        #         "Your account type does not support staff management.",
+        #         status_code=403
+        #     )
         
         # Check staff limit
         if not user.can_add_staff():
@@ -555,4 +565,28 @@ class SubUserDetailView(StandardResponseMixin, APIView):
         return self.success_response(
             message="Staff member deactivated successfully",
             status_code=200
+        )
+    
+
+
+
+class TeamSetupView(StandardResponseMixin, APIView):
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        serializer = TeamSetupSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            result = serializer.save()
+            
+            return self.success_response(
+                data=result,
+                message="Team setup completed successfully.",
+                status_code=200
+            )
+        
+        return self.error_response(
+            "Team setup failed",
+            status_code=400,
+            data=serializer.errors
         )

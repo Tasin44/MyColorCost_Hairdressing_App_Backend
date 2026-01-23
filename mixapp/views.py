@@ -440,7 +440,22 @@ class CheckMixCreationView(StandardResponseMixin, APIView):
     def get(self, request):
         """Check prerequisites for mix creation"""
         user = request.user
- 
+        # ✅ FIX: Get correct owner
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            owner = user.staff_profile.main_user
+        else:
+            owner = user
+        # Check for available products (owner's products)
+        has_products = UserProduct.objects.filter(
+            user=owner,
+            is_available=True
+        ).exists()
+        
+        # Check for clients (owner's clients)
+        has_clients = Client.objects.filter(user=owner).exists()
+
+        '''
+        #previously I was checking logged in user, but now checking owner, whether he is staff or owner
         # Check for available products
         has_products = UserProduct.objects.filter(
             user=user,
@@ -449,7 +464,8 @@ class CheckMixCreationView(StandardResponseMixin, APIView):
  
         # Check for clients
         has_clients = Client.objects.filter(user=user).exists()
- 
+        
+        '''
         can_create_mix = has_products and has_clients
  
         messages = []
@@ -487,7 +503,18 @@ class MixListCreateView(StandardResponseMixin, APIView):
         - to_date: Filter to date (YYYY-MM-DD)
         """
         user = request.user
- 
+
+        # ✅ FIX: Get correct owner
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            owner = user.staff_profile.main_user
+        else:
+            owner = user
+        
+        # Base queryset - filter by owner
+        queryset = Mix.objects.filter(user=owner).select_related(
+            'client', 'user', 'sub_user'
+        ).prefetch_related('mix_products')
+
         # Base queryset with optimizations
         queryset = Mix.objects.filter(user=user).select_related(
             'client', 'user', 'sub_user'
@@ -545,7 +572,29 @@ class MixListCreateView(StandardResponseMixin, APIView):
         )
  
         if serializer.is_valid():
-            mix = serializer.save()
+            user = request.user
+            
+            # ✅ FIX: Determine owner and sub_user
+            if user.role == 'staff' and hasattr(user, 'staff_profile'):
+                staff_profile = user.staff_profile
+                owner = staff_profile.main_user
+                sub_user = staff_profile
+            else:
+                owner = user
+                sub_user = None
+            
+            # Create mix
+            mix = Mix.objects.create(
+                user=owner,  # ✅ Owner gets the mix
+                #sub_user=sub_user,  # ✅ Staff is tracked
+                sub_user=staff_profile,  # ✅ SubUser object (has .user FK to actual User)
+                **serializer.validated_data
+            )            
+            
+            
+            #mix = serializer.save()
+            # ✅ KEEP ONLY THIS - save with correct user and sub_user
+            #mix = serializer.save(user=owner, sub_user=sub_user)
  
             detail_serializer = MixDetailSerializer(
                 mix,
@@ -693,11 +742,19 @@ class MixAddProductView(StandardResponseMixin, APIView):
         - used_weight: Weight in grams to use
         - start_bleach_timer: Boolean (optional, for bleach products)
         """
-        # Get mix
+        user = request.user
+        
+        # ✅ FIX: Get correct owner
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            owner = user.staff_profile.main_user
+        else:
+            owner = user
+        # Get mix (must belong to owner)
         try:
             mix = Mix.objects.select_related('client').get(
                 id=mix_id,
-                user=request.user
+                # user=request.user
+                user=owner  # ✅ Check against owner
             )
         except Mix.DoesNotExist:
             return self.error_response(

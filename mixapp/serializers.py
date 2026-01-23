@@ -256,9 +256,14 @@ class AddProductToMixSerializer(serializers.Serializer):
     def validate_user_product_id(self, value):
         """Validate user product exists and is available"""
         user = self.context['request'].user
- 
+        # ✅ FIX: Get correct owner
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            owner = user.staff_profile.main_user
+        else:
+            owner = user
         try:
-            user_product = UserProduct.objects.get(id=value, user=user)
+            #user_product = UserProduct.objects.get(id=value, user=user)
+            user_product = UserProduct.objects.get(id=value, user=owner)
         except UserProduct.DoesNotExist:
             raise serializers.ValidationError("Product not found in your inventory")
  
@@ -267,13 +272,40 @@ class AddProductToMixSerializer(serializers.Serializer):
  
         return value
  
+    # def validate(self, data):
+    #     """Validate sufficient weight is available"""
+    #     user = self.context['request'].user
+    #     user_product = UserProduct.objects.get(
+    #         id=data['user_product_id'],
+    #         user=user
+    #     )
+ 
+    #     if user_product.current_weight_grams < data['used_weight']:
+    #         raise serializers.ValidationError({
+    #             'used_weight': f"Insufficient weight. Available: {user_product.current_weight_grams}g"
+    #         })
+ 
+    #     data['user_product'] = user_product
+    #     return data
     def validate(self, data):
         """Validate sufficient weight is available"""
         user = self.context['request'].user
-        user_product = UserProduct.objects.get(
-            id=data['user_product_id'],
-            user=user
-        )
+        
+        # ✅ FIX: Use same owner logic as validate_user_product_id
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            owner = user.staff_profile.main_user
+        else:
+            owner = user
+        
+        try:
+            user_product = UserProduct.objects.get(
+                id=data['user_product_id'],
+                user=owner  # ✅ Use owner instead of user
+            )
+        except UserProduct.DoesNotExist:
+            raise serializers.ValidationError({
+                'user_product_id': "Product not found in inventory"
+            })
  
         if user_product.current_weight_grams < data['used_weight']:
             raise serializers.ValidationError({
@@ -282,7 +314,6 @@ class AddProductToMixSerializer(serializers.Serializer):
  
         data['user_product'] = user_product
         return data
- 
  
 class MixListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for mix listings"""
@@ -311,11 +342,16 @@ class MixListSerializer(serializers.ModelSerializer):
         if obj.sub_user:
             return {
                 'type': 'staff',
-                'name': obj.sub_user.name
+                'name': obj.sub_user.name,
+                #'id': obj.sub_user.id,      # ✅ Get User ID, not SubUser ID
+                'id': obj.sub_user.user.id,  # ✅ CHANGED: Get the actual User ID
+                'email': obj.sub_user.email       # Optional: add email
             }
         return {
             'type': 'owner',
-            'name': obj.user.name or obj.user.email
+            'name': obj.user.name or obj.user.email,
+            'id': obj.user.id,
+            'email': obj.user.email
         }
  
  
@@ -341,14 +377,16 @@ class MixDetailSerializer(serializers.ModelSerializer):
             return {
                 'type': 'staff',
                 'name': obj.sub_user.name,
-                'id': obj.sub_user.id
+                'id': obj.sub_user.user.id,  # ✅ CHANGED: Get the actual User ID
+                'email': obj.sub_user.email
             }
         return {
             'type': 'owner',
             'name': obj.user.name or obj.user.email,
-            'id': obj.user.id
+            'id': obj.user.id,
+            'email': obj.user.email
         }
- 
+
  
 class CreateMixSerializer(serializers.ModelSerializer):
     """Serializer for creating a new mix"""
