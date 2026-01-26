@@ -507,6 +507,13 @@ class MixListCreateView(StandardResponseMixin, APIView):
         # ✅ FIX: Get correct owner
         if user.role == 'staff' and hasattr(user, 'staff_profile'):
             owner = user.staff_profile.main_user
+            staff_profile = user.staff_profile
+        
+            # ✅ Staff sees ONLY their own mixes
+            queryset = Mix.objects.filter(
+                user=owner,
+                sub_user=staff_profile  # ✅ Only this staff's mixes
+            ).select_related('client', 'user', 'sub_user').prefetch_related('mix_products')
         else:
             owner = user
         
@@ -587,7 +594,8 @@ class MixListCreateView(StandardResponseMixin, APIView):
             mix = Mix.objects.create(
                 user=owner,  # ✅ Owner gets the mix
                 #sub_user=sub_user,  # ✅ Staff is tracked
-                sub_user=staff_profile,  # ✅ SubUser object (has .user FK to actual User)
+                #sub_user=staff_profile,  # ✅ SubUser object (has .user FK to actual User)
+                sub_user=sub_user,  # ✅ Use sub_user, not staff_profile
                 **serializer.validated_data
             )            
             
@@ -622,9 +630,9 @@ class MixDetailView(StandardResponseMixin, APIView):
     Retrieve, update, or delete a specific mix.
     """
     permission_classes = [IsAuthenticated]
- 
+    
+    '''
     def get_object(self, request, mix_id):
-        """Get mix with optimized query"""
         try:
             return Mix.objects.select_related(
                 'client', 'user', 'sub_user'
@@ -636,6 +644,42 @@ class MixDetailView(StandardResponseMixin, APIView):
             )
         except Mix.DoesNotExist:
             return None
+    '''
+    def get_object(self, request, mix_id):
+        """Get mix - staff can only access their own mixes, owner sees all"""
+        user = request.user
+        
+        # Get correct owner
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            owner = user.staff_profile.main_user
+            staff_profile = user.staff_profile
+            
+            # Staff can only access mixes they created
+            try:
+                return Mix.objects.select_related(
+                    'client', 'user', 'sub_user'
+                ).prefetch_related(
+                    'mix_products__user_product__product'
+                ).get(
+                    id=mix_id,
+                    user=owner,
+                    sub_user=staff_profile  # ✅ Only their mixes
+                )
+            except Mix.DoesNotExist:
+                return None
+        else:
+            # Owner sees all mixes
+            try:
+                return Mix.objects.select_related(
+                    'client', 'user', 'sub_user'
+                ).prefetch_related(
+                    'mix_products__user_product__product'
+                ).get(
+                    id=mix_id,
+                    user=user
+                )
+            except Mix.DoesNotExist:
+                return None
  
     def get(self, request, mix_id):
         """Get mix details including all products"""
@@ -716,8 +760,9 @@ class MixDetailView(StandardResponseMixin, APIView):
         # Delete mix
         mix.delete()
  
-        # Update client statistics
-        client.update_stats()
+        # ✅ FIX: Only update stats if client exists
+        if client: #without checking , I got - 'NoneType' object has no attribute 'update_stats'
+            client.update_stats()
  
         return self.success_response(
             message=f"Mix '{mix_name}' deleted successfully",
@@ -783,7 +828,7 @@ class MixAddProductView(StandardResponseMixin, APIView):
         charged_amount = validated_data['charged_amount']
         # start_bleach_timer = validated_data.get('start_bleach_timer', False)
         is_bleach_timer_on = validated_data['is_bleach_timer_on']
-        bleach_timer_started_at = validated_data.get('bleach_timer_started_at')
+        bleach_timer_start_time = validated_data.get('bleach_timer_start_time')
         bleach_timer_duration = validated_data.get('bleach_timer_duration')
         # Create mix product entry
         mix_product = MixProduct.objects.create(
@@ -797,7 +842,7 @@ class MixAddProductView(StandardResponseMixin, APIView):
             #bleach_timer_started_at=timezone.now().isoformat()
             #bleach_timer_started_at=timezone.now()
             is_bleach_timer_on=is_bleach_timer_on,
-            bleach_timer_started_at=bleach_timer_started_at if is_bleach_timer_on else None,
+            bleach_timer_start_time=bleach_timer_start_time if is_bleach_timer_on else None,
             bleach_timer_duration=bleach_timer_duration if is_bleach_timer_on else None
         )
         mix.charged_amount = charged_amount
@@ -834,13 +879,14 @@ class MixRemoveProductView(StandardResponseMixin, APIView):
     Remove a product from a mix.
     """
     permission_classes = [IsAuthenticated]
- 
+    
+    '''
     @transaction.atomic
     def delete(self, request, mix_id, mix_product_id):
-        """
-        Remove product from mix.
-        Note: This doesn't restore the product weight to inventory.
-        """
+        # """
+        # Remove product from mix.
+        # Note: This doesn't restore the product weight to inventory.
+        # """
         try:
             # Get mix
             mix = Mix.objects.get(id=mix_id, user=request.user)
@@ -877,16 +923,53 @@ class MixRemoveProductView(StandardResponseMixin, APIView):
                 "Product not found in mix",
                 status_code=404
             )
+    
+    '''
+    @transaction.atomic
+    def delete(self, request, mix_id, mix_product_id):
+        user = request.user
+        
+        # Get correct owner and check permissions
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            owner = user.staff_profile.main_user
+            staff_profile = user.staff_profile
+            
+            try:
+                # Staff can only delete from their own mixes
+                mix = Mix.objects.get(id=mix_id, user=owner, sub_user=staff_profile)
+            except Mix.DoesNotExist:
+                return self.error_response("Mix not found", status_code=404)
+        else:
+            # Owner can delete from any mix
+            try:
+                mix = Mix.objects.get(id=mix_id, user=user)
+            except Mix.DoesNotExist:
+                return self.error_response("Mix not found", status_code=404)
+        
+        # Get mix product
+        try:
+            mix_product = MixProduct.objects.get(id=mix_product_id, mix=mix)
+        except MixProduct.DoesNotExist:
+            return self.error_response("Product not found in mix", status_code=404)
+        
+        product_name = mix_product.product_name
+        mix_product.delete()
+        mix.calculate_total_cost()
+        
+        if mix.client:
+            mix.client.update_stats()
+        
+        return self.success_response(
+            message=f"Product '{product_name}' removed from mix",
+            status_code=200
+        )
  
- 
+'''
 class MixStatsView(StandardResponseMixin, APIView):
-    """
-    Get mix statistics for dashboard.
-    """
+
     permission_classes = [IsAuthenticated]
  
     def get(self, request):
-        """Get aggregated mix statistics"""
         user = request.user
  
         # Get current month
@@ -930,6 +1013,60 @@ class MixStatsView(StandardResponseMixin, APIView):
         )
  
  
+'''
+class MixStatsView(StandardResponseMixin, APIView):
+    """
+    Get mix statistics for dashboard.
+    """
+    permission_classes = [IsAuthenticated]
+ 
+    def get(self, request):
+        """Get aggregated mix statistics"""
+        user = request.user
+        now = timezone.now()
+        first_day_of_month = now.replace(day=1).date()
+ 
+        # ✅ Determine which mixes to include
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            # Staff sees only their own mixes
+            owner = user.staff_profile.main_user
+            staff_profile = user.staff_profile
+            all_mixes = Mix.objects.filter(user=owner, sub_user=staff_profile)
+        else:
+            # Owner sees all mixes (own + all staff)
+            all_mixes = Mix.objects.filter(user=user)
+ 
+        # Aggregate statistics
+        totals = all_mixes.aggregate(
+            total_profit=Sum('profit'),
+            total_revenue=Sum('charged_amount'),
+            total_cost=Sum('total_cost')
+        )
+ 
+        # Most used service type
+        most_used_service = all_mixes.values('service_type').annotate(
+            count=Count('id')
+        ).order_by('-count').first()
+ 
+        stats = {
+            'total_mixes': all_mixes.count(),
+            'total_profit': totals['total_profit'] or 0,
+            'total_revenue': totals['total_revenue'] or 0,
+            'total_cost': totals['total_cost'] or 0,
+            'mixes_this_month': all_mixes.filter(
+                created_date__gte=first_day_of_month
+            ).count(),
+            'most_used_service_type': most_used_service['service_type'] if most_used_service else 'N/A'
+        }
+ 
+        serializer = MixStatsSerializer(data=stats)
+        serializer.is_valid()
+ 
+        return self.success_response(
+            data=serializer.data,
+            message="Mix statistics retrieved successfully",
+            status_code=200
+        )
 
 class MixViewSet(ModelViewSet):
     queryset = Mix.objects.all()

@@ -257,6 +257,7 @@ ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
     "6zpmb4x8-8015.inc1.devtunnels.ms",
+    '*',
 ]
 
 USE_X_FORWARDED_HOST = True

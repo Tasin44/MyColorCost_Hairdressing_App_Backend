@@ -224,7 +224,9 @@ class UserProduct(models.Model):
             self.current_weight_grams = Decimal('0.00')
             self.is_available = False
  
-        self.last_used_at = models.DateTimeField(auto_now=True)
+        # self.last_used_at = models.DateTimeField(auto_now=True)❌❌❌is a FIELD DEFINITION, not a value,It's meant to be used in the model class definition,It creates a Field object, not a datetime value
+
+        self.last_used_at = timezone.now()  # ✅ FIX: Use timezone.now(), not DateTimeField
         self.save(update_fields=['current_weight_grams', 'is_available', 'last_used_at'])
  
 
@@ -567,7 +569,13 @@ class MixProduct(models.Model):
     #     help_text="When bleach timer was started"
     # )
     is_bleach_timer_on = models.BooleanField(default=False)
-    bleach_timer_started_at = models.CharField(  # ✅ Changed to CharField
+    # bleach_timer_started_at = models.CharField(  # ✅ Changed to CharField
+    #     max_length=50,
+    #     null=True,
+    #     blank=True,
+    #     editable=True  # Add this
+    # )
+    bleach_timer_start_time = models.CharField(  # NEW NAME
         max_length=50,
         null=True,
         blank=True
@@ -604,7 +612,6 @@ class MixProduct(models.Model):
         #     self.bleach_timer_started_at = timezone.now().isoformat()
         self.calculate_cost()
         super().save(*args, **kwargs)
-
 
 
 

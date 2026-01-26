@@ -228,7 +228,7 @@ class MixProductSerializer(serializers.ModelSerializer):
         model = MixProduct
         fields = [
             'id', 'product_name', 'used_weight', 'market_price',
-            'user_price', 'each_item_cost','is_bleach_timer_on','bleach_timer_started_at','bleach_timer_duration'
+            'user_price', 'each_item_cost','is_bleach_timer_on','bleach_timer_start_time','bleach_timer_duration'
         ]
         read_only_fields = ['id', 'each_item_cost']
  
@@ -246,12 +246,26 @@ class AddProductToMixSerializer(serializers.Serializer):
     #start_bleach_timer = serializers.BooleanField(default=False)
     market_price = serializers.DecimalField(max_digits=10, decimal_places=2)
     charged_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
-    bleach_timer_started_at = serializers.CharField(required=False,
-    allow_null=True)
-    is_bleach_timer_on = serializers.BooleanField()
-    bleach_timer_duration = serializers.CharField(   # ✅ ADD
+    #bleach_timer_start_time = serializers.CharField(required=False,
+   # allow_null=True)
+    # ✅ Be MORE explicit - don't let DRF auto-detect
+    bleach_timer_start_time = serializers.CharField(
         required=False,
-        allow_null=True
+        allow_null=True,
+        allow_blank=True,  # Add this
+        max_length=50      # Add this
+    )
+    # is_bleach_timer_on = serializers.BooleanField()
+    # bleach_timer_duration = serializers.CharField(   # ✅ ADD
+    #     required=False,
+    #     allow_null=True
+    # )
+    is_bleach_timer_on = serializers.BooleanField(default=False)  # Add default
+    bleach_timer_duration = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,  # Add this
+        max_length=30      # Add this
     )
     def validate_user_product_id(self, value):
         """Validate user product exists and is available"""
