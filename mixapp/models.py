@@ -173,7 +173,9 @@ class UserProduct(models.Model):
         max_digits=10,
         decimal_places=2,
         validators=[MinValueValidator(Decimal('0.01'))],
-        help_text="User's custom price per 100g"
+        help_text="User's custom price per 100g",
+        null=True,  # ✅ ADD THIS
+        blank=True  # ✅ ADD THIS
     )
  
     # Current available weight in grams

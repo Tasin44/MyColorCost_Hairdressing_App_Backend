@@ -250,9 +250,9 @@ stripe.api_key = STRIPE_SECRET_KEY
 # STRIPE_WEBHOOK_SECRET = 'whsec_tk2uDcteoL1zhBnkK0BrJVZd3MwZqiY8' # I got it from stripe dashboard, which is smaller
 STRIPE_WEBHOOK_SECRET='whsec_2c58f3e29a2cdff7d358ddc74ad7bfed19a8e641632368dce5abe060756b8480'
 
-BASE_URL = "https://6zpmb4x8-8015.inc1.devtunnels.ms"
+# BASE_URL = "https://6zpmb4x8-8015.inc1.devtunnels.ms"
 
-
+BASE_URL = "http://10.10.12.14:8000"
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",

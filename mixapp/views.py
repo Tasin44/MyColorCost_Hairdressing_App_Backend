@@ -5,12 +5,13 @@ from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework import status
+from rest_framework import status, serializers
 from rest_framework.viewsets import ModelViewSet
 from django.db import transaction
 from django.db.models import Q, Sum, Count, Avg
 from django.utils import timezone
 from datetime import timedelta
+from decimal import Decimal
 from rest_framework.decorators import action
 from .models import ShopProduct, UserProduct, Mix, MixProduct, ProductReview
 from clientapp.models import Client
@@ -20,9 +21,10 @@ from .serializers import (
     MixListSerializer, MixDetailSerializer, CreateMixSerializer,
     UpdateMixSerializer, AddProductToMixSerializer,
     MixProductSerializer, ProductReviewSerializer,
-    CreateProductReviewSerializer, MixStatsSerializer,AssignClientSerializer
+    CreateProductReviewSerializer, MixStatsSerializer,AssignClientSerializer,
+    SetChargedAmountSerializer
 )
- 
+from mixapp.utils import generate_mix_pdf
  
 class StandardResponseMixin:
     """Mixin for consistent API responses"""
@@ -825,7 +827,11 @@ class MixAddProductView(StandardResponseMixin, APIView):
         used_weight = validated_data['used_weight']
         # start_bleach_timer = validated_data.get('start_bleach_timer', False)
         market_price = validated_data['market_price']
-        charged_amount = validated_data['charged_amount']
+
+        user_price = validated_data['user_price']  # ✅ GET FROM REQUEST
+
+
+        #charged_amount = validated_data['charged_amount']
         # start_bleach_timer = validated_data.get('start_bleach_timer', False)
         is_bleach_timer_on = validated_data['is_bleach_timer_on']
         bleach_timer_start_time = validated_data.get('bleach_timer_start_time')
@@ -838,17 +844,22 @@ class MixAddProductView(StandardResponseMixin, APIView):
             used_weight=used_weight,
             # market_price=user_product.product.market_price,
             market_price=market_price,   # ✅ USE REQUEST VALUE
-            user_price=user_product.user_price,
+
+            #❌STOP reading user_price from inventory
+            #user_price=user_product.user_price,
+
+            user_price=user_price,  # ✅ USE REQUEST VALUE
+            
             #bleach_timer_started_at=timezone.now().isoformat()
             #bleach_timer_started_at=timezone.now()
             is_bleach_timer_on=is_bleach_timer_on,
             bleach_timer_start_time=bleach_timer_start_time if is_bleach_timer_on else None,
             bleach_timer_duration=bleach_timer_duration if is_bleach_timer_on else None
         )
-        mix.charged_amount = charged_amount
-        #mix.save(update_fields=['charged_amount'])
-        mix.save(update_fields=['charged_amount', 'updated_at'])  # ✅ Specify fields
+        #mix.charged_amount = charged_amount
 
+        # mix.save(update_fields=['charged_amount', 'updated_at'])  # ✅ Specify fields
+        mix.save(update_fields=['updated_at'])  # ✅ Specify fields
         # Reduce product weight in inventory
         user_product.reduce_weight(used_weight)
 
@@ -1074,6 +1085,18 @@ class MixViewSet(ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='assign-client')
     def assign_client(self, request, pk=None):
+
+        user = request.user
+        
+        # ✅ FIX: Get correct owner
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            owner = user.staff_profile.main_user
+            staff_profile = user.staff_profile
+        else:
+            owner = user
+            staff_profile = None
+
+
         mix = self.get_object()
         serializer = AssignClientSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -1083,7 +1106,8 @@ class MixViewSet(ModelViewSet):
         try:
             client = Client.objects.get(
                 id=client_id,
-                user=request.user
+                #user=request.user
+                user=owner  # ✅ Check against owner, not request.user
             )
         except Client.DoesNotExist:
             return Response(
@@ -1103,5 +1127,69 @@ class MixViewSet(ModelViewSet):
             status=status.HTTP_200_OK
         )
     
+
+
+class MixGeneratePDFView(StandardResponseMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, mix_id):
+        mix = Mix.objects.prefetch_related("mix_products").filter(id=mix_id).first()
+        if not mix:
+            return self.error_response("Mix not found", 404)
+
+        pdf_url = generate_mix_pdf(mix)
+        mix.pdf_url = pdf_url
+        mix.save(update_fields=["pdf_url"])
+
+        return self.success_response(
+            data={"pdf_url": pdf_url},
+            message="PDF generated successfully",
+            status_code=200
+        )
+
+
+class MixSetChargedAmountView(StandardResponseMixin, APIView):
+    """Set charged amount for a mix and calculate profit"""
+    permission_classes = [IsAuthenticated]
+    
+    @transaction.atomic
+    def patch(self, request, mix_id):
+        user = request.user
+        
+        # Get correct owner
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            owner = user.staff_profile.main_user
+            staff_profile = user.staff_profile
+            try:
+                mix = Mix.objects.get(id=mix_id, user=owner, sub_user=staff_profile)
+            except Mix.DoesNotExist:
+                return self.error_response("Mix not found", status_code=404)
+        else:
+            try:
+                mix = Mix.objects.get(id=mix_id, user=user)
+            except Mix.DoesNotExist:
+                return self.error_response("Mix not found", status_code=404)
+        
+        serializer = SetChargedAmountSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return self.error_response(
+                "Invalid data",
+                status_code=400,
+                data=serializer.errors
+            )
+        
+        charged_amount = serializer.validated_data['charged_amount']
+        mix.charged_amount = charged_amount
+        mix.calculate_profit()
+        mix.save(update_fields=['charged_amount', 'profit', 'updated_at'])
+        
+        detail_serializer = MixDetailSerializer(mix, context={'request': request})
+        
+        return self.success_response(
+            data=detail_serializer.data,
+            message="Charged amount set successfully",
+            status_code=200
+        )
 
 

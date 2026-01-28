@@ -89,6 +89,9 @@ class CreateUserProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProduct
         fields = ['product_id', 'user_price', 'current_weight_grams']
+        extra_kwargs = {
+            'user_price': {'required': False}  # ✅ MAKE OPTIONAL
+        }
  
     def validate_product_id(self, value):
         """Validate product exists"""
@@ -100,7 +103,8 @@ class CreateUserProductSerializer(serializers.ModelSerializer):
  
     def validate_user_price(self, value):
         """Validate user price is positive"""
-        if value <= 0:
+        #if value <= 0:
+        if value is not None and value <= 0:  # ✅ ADD NULL CHECK
             raise serializers.ValidationError("Price must be greater than 0")
         return value
  
@@ -122,7 +126,7 @@ class CreateUserProductSerializer(serializers.ModelSerializer):
             user=user,
             product=product,
             defaults={
-                'user_price': validated_data['user_price'],
+                'user_price': validated_data.get('user_price'),
                 'current_weight_grams': validated_data['current_weight_grams'],
                 'is_available': validated_data['current_weight_grams'] > 0
             }
@@ -130,7 +134,9 @@ class CreateUserProductSerializer(serializers.ModelSerializer):
  
         # If not created, update existing
         if not created:
-            user_product.user_price = validated_data['user_price']
+            # user_product.user_price = validated_data['user_price']
+            if 'user_price' in validated_data:  # ✅ ONLY UPDATE IF PROVIDED
+                user_product.user_price = validated_data['user_price']
             user_product.current_weight_grams += validated_data['current_weight_grams']
             user_product.is_available = user_product.current_weight_grams > 0
             user_product.save(update_fields=[
@@ -245,7 +251,16 @@ class AddProductToMixSerializer(serializers.Serializer):
     )
     #start_bleach_timer = serializers.BooleanField(default=False)
     market_price = serializers.DecimalField(max_digits=10, decimal_places=2)
-    charged_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+    user_price = serializers.DecimalField(  # ✅ ADD THIS FIELD
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01')
+    )
+
+
+
+    #charged_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
     #bleach_timer_start_time = serializers.CharField(required=False,
    # allow_null=True)
     # ✅ Be MORE explicit - don't let DRF auto-detect
@@ -545,7 +560,12 @@ class MixStatsSerializer(serializers.Serializer):
 class AssignClientSerializer(serializers.Serializer):
     client_id = serializers.IntegerField()
 
-
+class SetChargedAmountSerializer(serializers.Serializer):
+    charged_amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01')
+    )
 
 
 

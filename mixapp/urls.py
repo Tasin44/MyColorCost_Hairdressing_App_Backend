@@ -1,5 +1,6 @@
 # mixapp/urls.py
-from django.urls import path
+from django.urls import path,include
+from rest_framework.routers import DefaultRouter
 from .views import (
     # Shop Products
     ShopProductListView, ShopProductDetailView,
@@ -13,10 +14,15 @@ from .views import (
     MixRemoveProductView, MixStatsView,
  
     # Reviews
-    ProductReviewListView, UserReviewsView
+    ProductReviewListView, UserReviewsView, MixGeneratePDFView,
+    MixSetChargedAmountView,MixViewSet
 )
  
 app_name = 'mixapp'
+
+# Create router and register viewsets
+router = DefaultRouter()
+router.register(r'mixes', MixViewSet, basename='mix')
  
 urlpatterns = [
     # Shop Products (Master Catalog)
@@ -42,6 +48,12 @@ urlpatterns = [
     # Product Reviews
     path('shop-products/<int:product_id>/reviews/', ProductReviewListView.as_view(), name='product-reviews'),
     path('my-reviews/', UserReviewsView.as_view(), name='user-reviews'),
+    path("mixes/<int:mix_id>/generate-pdf/", MixGeneratePDFView.as_view()),
+
+    path('mixes/<int:mix_id>/set-charge/', MixSetChargedAmountView.as_view(), name='mix-set-charge'),
+
+    # ✅ Include router URLs
+    path('', include(router.urls)),
 ]
 
 
