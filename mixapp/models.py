@@ -59,7 +59,14 @@ class ShopProduct(models.Model):
     Products that can be scanned and added to user inventory.
     """
     id = models.AutoField(primary_key=True)
- 
+    
+    # ✅ ADD THIS NEW FIELD
+    api_data = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Full API response from Barcode Spider"
+    )
+
     # Product information
     name = models.CharField(max_length=255, db_index=True)
     description = models.TextField(null=True, blank=True)

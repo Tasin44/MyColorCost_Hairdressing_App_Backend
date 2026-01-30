@@ -40,7 +40,7 @@ class ShopProductDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'description', 'image_url',
             'market_price', 'average_rating',
-            'total_reviews', 'barcode', 'stock_quantity','in_stock','expiry_date', 'created_at'
+            'total_reviews', 'barcode', 'stock_quantity','in_stock','expiry_date', 'created_at','api_data'  # ✅ ADD THIS
         ]
  
     def get_image_url(self, obj):
@@ -568,10 +568,98 @@ class SetChargedAmountSerializer(serializers.Serializer):
     )
 
 
+#-------------------------------------------------------------------------------------------------------------
+class BarcodeScanRequestSerializer(serializers.Serializer):
+    """Serializer for barcode scan request"""
+    barcode = serializers.CharField(
+        max_length=100,
+        required=True,
+        help_text="Scanned barcode/UPC"
+    )
+    
+    def validate_barcode(self, value):
+        """Validate barcode format"""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Barcode cannot be empty")
+        return value.strip()
 
 
+class BarcodeScanResponseSerializer(serializers.Serializer):
+    """Serializer for barcode scan response"""
+    found_in_db = serializers.BooleanField()
+    found_in_api = serializers.BooleanField()
+    manual_entry_required = serializers.BooleanField()
+    product = serializers.SerializerMethodField()
+    message = serializers.CharField()
+    
+    def get_product(self, obj):
+        """Return product data if available"""
+        product_data = obj.get('product')
+        if product_data:
+            # If it's a ShopProduct instance
+            if hasattr(product_data, 'id'):
+                return ShopProductDetailSerializer(product_data, context=self.context).data
+            # If it's dict from API
+            return product_data
+        return None
 
 
+class ManualProductEntrySerializer(serializers.Serializer):
+    """Serializer for manual product entry"""
+    name = serializers.CharField(max_length=255, required=True)
+    description = serializers.CharField(required=False, allow_blank=True)
+    market_price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01'),
+        required=True
+    )
+    current_weight_grams = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01'),
+        required=True
+    )
+    barcode = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    image = serializers.ImageField(required=False, allow_null=True)
+    expiry_date = serializers.DateField(required=False, allow_null=True)
+    
+    def validate_name(self, value):
+        """Validate product name"""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Product name is required")
+        return value.strip()
+
+
+class UpdateScannedProductSerializer(serializers.Serializer):
+    """Update scanned product with manual price and weight"""
+    market_price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01'),
+        required=False
+    )
+    current_weight_grams = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01'),
+        required=False
+    )
+    user_price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01'),
+        required=False,
+        help_text="Optional: User's custom price per 100g"
+    )
+    
+    def validate(self, data):
+        """At least one field must be provided"""
+        if not any(data.values()):
+            raise serializers.ValidationError(
+                "At least one of market_price, current_weight_grams, or user_price must be provided"
+            )
+        return data
 
 
 

@@ -15,7 +15,11 @@ from .views import (
  
     # Reviews
     ProductReviewListView, UserReviewsView, MixGeneratePDFView,
-    MixSetChargedAmountView,MixViewSet
+    MixSetChargedAmountView,MixViewSet,
+    
+    # Barcode & Manual Entry
+    ScanBarcodeView, ManualProductEntryView,
+    UpdateScannedProductView,ProductScanHistoryView
 )
  
 app_name = 'mixapp'
@@ -54,6 +58,10 @@ urlpatterns = [
 
     # ✅ Include router URLs
     path('', include(router.urls)),
+    path('scan-barcode/', ScanBarcodeView.as_view(), name='scan-barcode'),
+    path('manual-product-entry/', ManualProductEntryView.as_view(), name='manual-product-entry'),
+    path('update-scanned-product/<int:product_id>/', UpdateScannedProductView.as_view(), name='update-scanned-product'),  
+    path('scan-history/', ProductScanHistoryView.as_view(), name='scan-history'),  # ✅ ADD THIS
 ]
 
 
