@@ -58,8 +58,10 @@ class ShopProduct(models.Model):
     Master product catalog.
     Products that can be scanned and added to user inventory.
     """
-    id = models.AutoField(primary_key=True)
+    #My thinking-Scanned product will be added here
     
+    id = models.AutoField(primary_key=True)
+
     # ✅ ADD THIS NEW FIELD
     api_data = models.JSONField(
         null=True,

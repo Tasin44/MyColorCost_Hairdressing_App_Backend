@@ -38,6 +38,14 @@ class Client(models.Model):
     contact_number = models.CharField(max_length=20, null=True, blank=True)
     email = models.EmailField(null=True, blank=True, db_index=True)
     
+    # Profile image
+    profile_image = models.ImageField(
+        upload_to='client_profiles/%Y/%m/%d/',
+        null=True,
+        blank=True,
+        help_text="Client profile photo"
+    )
+
     # Service information
     service_type = models.CharField(#service name
         max_length=100, 

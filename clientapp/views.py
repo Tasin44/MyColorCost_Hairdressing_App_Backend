@@ -48,7 +48,8 @@ class ClientListCreateView(StandardResponseMixin, APIView):
     Optimized with select_related and prefetch_related to avoid N+1 queries.
     """
     permission_classes = [IsAuthenticated]
-    
+    parser_classes = [MultiPartParser, FormParser]  # Add this line
+
     def get_queryset(self, request):
         """
         Get clients based on user role.
@@ -203,7 +204,8 @@ class ClientDetailView(StandardResponseMixin, APIView):
     Retrieve, update, or delete a specific client.
     """
     permission_classes = [IsAuthenticated]
-    
+    parser_classes = [MultiPartParser, FormParser]  # Add this line
+    '''
     def get_object(self, request, client_id):
         """
         Get client if user has access.
@@ -221,6 +223,44 @@ class ClientDetailView(StandardResponseMixin, APIView):
                 user=request.user
             )
             return client
+        except Client.DoesNotExist:
+            return None
+    '''
+    def get_object(self, request, client_id):
+        """
+        Get client if user has access.
+        Staff can access their own clients, owner can access all.
+        """
+        user = request.user
+        
+        try:
+            if user.role == 'staff' and hasattr(user, 'staff_profile'):
+                # Staff can only access their own clients
+                staff_profile = user.staff_profile
+                client = Client.objects.select_related(
+                    'user', 'sub_user'
+                ).prefetch_related(
+                    'images',
+                    'mixes__mix_products'
+                ).get(
+                    id=client_id,
+                    user=staff_profile.main_user,  # Owner's client
+                    sub_user=staff_profile  # But created by this staff
+                )
+            else:
+                # Owner can access all clients
+                client = Client.objects.select_related(
+                    'user', 'sub_user'
+                ).prefetch_related(
+                    'images',
+                    'mixes__mix_products'
+                ).get(
+                    id=client_id,
+                    user=user  # Owner's clients
+                )
+            
+            return client
+            
         except Client.DoesNotExist:
             return None
     
@@ -248,6 +288,7 @@ class ClientDetailView(StandardResponseMixin, APIView):
     @transaction.atomic
     def patch(self, request, client_id):
         """Update client information"""
+
         client = self.get_object(request, client_id)
         
         if not client:

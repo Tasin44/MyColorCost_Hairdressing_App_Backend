@@ -62,6 +62,7 @@ class UserProductSerializer(serializers.ModelSerializer):
         decimal_places=2,
         read_only=True
     )
+    scanned_at = serializers.SerializerMethodField()  # ✅ CHANGE TO METHOD FIELD
  
     class Meta:
         model = UserProduct
@@ -70,7 +71,7 @@ class UserProductSerializer(serializers.ModelSerializer):
             'market_price', 'user_price', 'current_weight_grams',
             'is_available', 'scanned_at', 'last_used_at'
         ]
-        read_only_fields = ['id', 'scanned_at', 'last_used_at']
+        read_only_fields = ['id', 'last_used_at']
  
     def get_product_image(self, obj):
         """Get product image URL"""
@@ -80,7 +81,16 @@ class UserProductSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.product.image.url)
             return obj.product.image.url
         return None
- 
+    # ✅ ADD THIS METHOD
+    def get_scanned_at(self, obj):
+        """Only show scanned_at if not manual entry"""
+        # Check if this is manual entry context
+        is_manual_entry = self.context.get('is_manual_entry', False)
+        
+        if is_manual_entry:
+            return None  # Don't return for manual entries
+        
+        return obj.scanned_at.isoformat() if obj.scanned_at else None
  
 class CreateUserProductSerializer(serializers.ModelSerializer):
     """Serializer for adding product to user inventory"""
@@ -250,7 +260,10 @@ class AddProductToMixSerializer(serializers.Serializer):
         min_value=Decimal('0.01')
     )
     #start_bleach_timer = serializers.BooleanField(default=False)
-    market_price = serializers.DecimalField(max_digits=10, decimal_places=2)
+    market_price = serializers.DecimalField(max_digits=10, decimal_places=2,
+    required=False,  # ✅ ADD THIS
+    allow_null=True  # ✅ ADD THIS
+    )
 
     user_price = serializers.DecimalField(  # ✅ ADD THIS FIELD
         max_digits=10,

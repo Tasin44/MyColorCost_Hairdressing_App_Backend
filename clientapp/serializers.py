@@ -2,7 +2,7 @@
 from rest_framework import serializers
 from django.db import transaction
 from .models import Client, ClientImage
-
+from datetime import date, datetime
 
 class ClientImageSerializer(serializers.ModelSerializer):
     """Serializer for client images (before/after photos)"""
@@ -51,16 +51,25 @@ class ClientListSerializer(serializers.ModelSerializer):
     """
     created_by = serializers.SerializerMethodField()
     has_images = serializers.SerializerMethodField()
-    
+    last_visit_date = serializers.SerializerMethodField()
+    next_appointment_date = serializers.SerializerMethodField()
+    profile_image_url = serializers.SerializerMethodField()
     class Meta:
         model = Client
         fields = [
             'id', 'name', 'contact_number', 'email',
             'service_type', 'total_mixes', 'last_visit_date',
             'next_appointment_date', 'created_by', 'has_images',
-            'created_at'
+            'created_at','profile_image_url'
         ]
-    
+    def get_profile_image_url(self, obj):
+        """Get absolute URL for profile image"""
+        if obj.profile_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_image.url)
+            return obj.profile_image.url
+        return None
     def get_created_by(self, obj):
         """Return who created the client"""
         if obj.sub_user:
@@ -80,7 +89,13 @@ class ClientListSerializer(serializers.ModelSerializer):
         # Use prefetch_related in view to avoid N+1
         # return obj.images.exists() if hasattr(obj, 'images') else False
         return obj.images.exists()#hasattr(obj, 'images') check is unnecessary,images always exists due to related_name
-
+    def get_last_visit_date(self, obj):
+        """Return default if null"""
+        return obj.last_visit_date or "2026-12-31T00:00:00"
+    
+    def get_next_appointment_date(self, obj):
+        """Return default if null"""
+        return obj.next_appointment_date or date(2026, 12, 31)
 
 class ClientDetailSerializer(serializers.ModelSerializer):
     """
@@ -90,7 +105,9 @@ class ClientDetailSerializer(serializers.ModelSerializer):
     images = ClientImageSerializer(many=True, read_only=True)
     created_by = serializers.SerializerMethodField()
     mix_history = serializers.SerializerMethodField()
-    
+    last_visit_date = serializers.SerializerMethodField()
+    next_appointment_date = serializers.SerializerMethodField()
+    profile_image_url = serializers.SerializerMethodField()
     class Meta:
         model = Client
         fields = [
@@ -98,9 +115,16 @@ class ClientDetailSerializer(serializers.ModelSerializer):
             'service_type', 'skin_test_date', 'notes',
             'total_mixes', 'last_visit_date', 'next_appointment_date',
             'images', 'created_by', 'mix_history',
-            'created_at', 'updated_at'
+            'created_at', 'updated_at','profile_image_url'
         ]
-    
+    def get_profile_image_url(self, obj):
+        """Get absolute URL for profile image"""
+        if obj.profile_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_image.url)
+            return obj.profile_image.url
+        return None
     def get_created_by(self, obj):
         """Return who created the client"""
         if obj.sub_user:
@@ -131,19 +155,26 @@ class ClientDetailSerializer(serializers.ModelSerializer):
         ).order_by('-created_date', '-created_time')[:10]
         
         return MixListSerializer(recent_mixes, many=True, context=self.context).data
-
+    
+    def get_last_visit_date(self, obj):
+        """Return default if null"""
+        return obj.last_visit_date or "2026-12-31"
+    
+    def get_next_appointment_date(self, obj):
+        """Return default if null"""
+        return obj.next_appointment_date or date(2026, 12, 31)
 
 class ClientCreateUpdateSerializer(serializers.ModelSerializer):
     """
     Serializer for creating and updating clients.
     """
-    
+    profile_image = serializers.ImageField(required=False, allow_null=True)
     class Meta:
         model = Client
         fields = [
             'name', 'contact_number', 'email',
             'service_type', 'skin_test_date', 'notes',
-            'next_appointment_date'
+            'next_appointment_date', 'profile_image'
         ]
     
     def validate_name(self, value):

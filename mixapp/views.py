@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status, serializers
 from rest_framework.viewsets import ModelViewSet
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.db import transaction
 from django.db.models import Q, Sum, Count, Avg
 from django.utils import timezone
@@ -174,7 +175,13 @@ class UserProductListView(StandardResponseMixin, APIView):
         - search: Search by product name
         """
         user = request.user
- 
+
+         # Get correct owner
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            owner = user.staff_profile.main_user
+        else:
+            owner = user
+
         # Base queryset with optimization
         queryset = UserProduct.objects.filter(user=user).select_related(
             'product'
@@ -184,12 +191,14 @@ class UserProductListView(StandardResponseMixin, APIView):
         available_only = request.query_params.get('available_only', 'false').lower()
         if available_only == 'true':
             queryset = queryset.filter(is_available=True)
+
  
         # Search
         search = request.query_params.get('search', '').strip()
         if search:
             queryset = queryset.filter(product__name__icontains=search)
- 
+
+        '''
         # Order by availability and recent scans
         queryset = queryset.order_by('-is_available', '-scanned_at')
  
@@ -198,10 +207,39 @@ class UserProductListView(StandardResponseMixin, APIView):
             many=True,
             context={'request': request}
         )
+        '''
+     # ✅ Build response with conditional scanned_at
+        data = []
+        for user_product in queryset:
+            product_data = {
+                'id': user_product.id,
+                'product_id': user_product.product.id,
+                'product_name': user_product.product.name,
+                'product_image': request.build_absolute_uri(user_product.product.image.url) if user_product.product.image else None,
+                'market_price': str(user_product.product.market_price),
+                'user_price': str(user_product.user_price) if user_product.user_price else None,
+                'current_weight_grams': str(user_product.current_weight_grams),
+                'is_available': user_product.is_available,
+                'last_used_at': user_product.last_used_at.isoformat() if user_product.last_used_at else None
+            }
+            
+            # ✅ Check if manual entry (has scan history with manual type)
+            is_manual = ProductScanHistory.objects.filter(
+                shop_product=user_product.product,
+                user=owner,
+                scan_type='manual'
+            ).exists()
+            
+            # ✅ Add scanned_at ONLY if NOT manual entry
+            if not is_manual:
+                product_data['scanned_at'] = user_product.scanned_at.isoformat()
+                product_data['api_data'] = user_product.product.api_data  # ✅ Full Barcode Spider data
+            
+            data.append(product_data)
  
         return self.success_response(
             data={
-                'products': serializer.data,
+                'products': data,
                 'total_count': queryset.count(),
                 'available_count': queryset.filter(is_available=True).count()
             },
@@ -828,8 +866,11 @@ class MixAddProductView(StandardResponseMixin, APIView):
         user_product = validated_data['user_product']
         used_weight = validated_data['used_weight']
         # start_bleach_timer = validated_data.get('start_bleach_timer', False)
-        market_price = validated_data['market_price']
-
+        # market_price = validated_data['market_price']
+        # ✅ AUTO-FETCH market_price if not provided
+        market_price = validated_data.get('market_price')
+        if not market_price:
+            market_price = user_product.product.market_price
         user_price = validated_data['user_price']  # ✅ GET FROM REQUEST
 
 
@@ -1387,7 +1428,8 @@ class ManualProductEntryView(StandardResponseMixin, APIView):
     Used when barcode scan doesn't find product
     """
     permission_classes = [IsAuthenticated]
-    
+    parser_classes = [MultiPartParser, FormParser]  # Add this line
+
     @transaction.atomic
     def post(self, request):
         """
@@ -1430,6 +1472,9 @@ class ManualProductEntryView(StandardResponseMixin, APIView):
                 )
         
         # Create ShopProduct
+        '''
+        
+        '''
         shop_product = ShopProduct.objects.create(
             name=validated_data['name'],
             description=validated_data.get('description', ''),
@@ -1451,6 +1496,7 @@ class ManualProductEntryView(StandardResponseMixin, APIView):
         )
         
         # Create scan history
+        
         ProductScanHistory.objects.create(
             user=owner,
             shop_product=shop_product,
@@ -1458,6 +1504,8 @@ class ManualProductEntryView(StandardResponseMixin, APIView):
             scanned_weight=validated_data['current_weight_grams'],
             scan_type='manual'
         )
+        
+
         
         # Prepare response
         product_serializer = ShopProductDetailSerializer(
@@ -1467,7 +1515,12 @@ class ManualProductEntryView(StandardResponseMixin, APIView):
         
         inventory_serializer = UserProductSerializer(
             user_product,
-            context={'request': request}
+            context={
+                
+                'request': request,
+                 'is_manual_entry': True  # ✅ ADD THIS FLAG    
+                     
+                }
         )
         
         return self.success_response(
@@ -1655,12 +1708,15 @@ class ProductScanHistoryView(StandardResponseMixin, APIView):
                     'image_url': request.build_absolute_uri(scan.shop_product.image.url) if scan.shop_product.image else None,
                     'api_data': scan.shop_product.api_data  # Full Barcode Spider response
                 },
+                '''
                 'scan_details': {
                     'barcode': scan.barcode,
                     'qr_code': scan.qr_code,
                     'scanned_weight': str(scan.scanned_weight) if scan.scanned_weight else None,
                     'scan_type': scan.scan_type
                 },
+                '''
+
                 'scanned_at': scan.created_at.isoformat()
             })
         
@@ -1672,24 +1728,6 @@ class ProductScanHistoryView(StandardResponseMixin, APIView):
             message="Scan history retrieved successfully",
             status_code=200
         )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
