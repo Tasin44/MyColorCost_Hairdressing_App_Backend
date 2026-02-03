@@ -665,7 +665,11 @@ class UpdateScannedProductSerializer(serializers.Serializer):
         required=False,
         help_text="Optional: User's custom price per 100g"
     )
-    
+    description = serializers.CharField(  # ✅ ADD THIS
+        required=False,
+        allow_blank=True,
+        max_length=1000
+    )
     def validate(self, data):
         """At least one field must be provided"""
         if not any(data.values()):

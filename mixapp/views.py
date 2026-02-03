@@ -330,7 +330,7 @@ class UserProductDetailView(StandardResponseMixin, APIView):
         update_data = {
             k: v for k, v in request.data.items() if k in allowed_fields
         }
- 
+
         serializer = UserProductSerializer(
             user_product,
             data=update_data,
@@ -1578,7 +1578,13 @@ class UpdateScannedProductView(StandardResponseMixin, APIView):
         validated_data = serializer.validated_data
 
         updated_fields = {}
-        
+
+    # ✅ Update ShopProduct description if provided
+        if 'description' in validated_data:
+            shop_product.description = validated_data['description']
+            shop_product.save(update_fields=['description', 'updated_at'])
+            updated_fields['description'] = validated_data['description']
+            
         # ✅ Update ShopProduct market_price if provided
         if 'market_price' in validated_data:
             if shop_product.market_price == Decimal('0.00'):
