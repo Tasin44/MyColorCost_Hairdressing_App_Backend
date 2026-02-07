@@ -118,6 +118,52 @@ class ShopProduct(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
  
+     # ✅ ADD THESE NEW FIELDS
+    retailer = models.ForeignKey(
+        'retailerapp.RetailerProfile',  # Link to retailer
+        on_delete=models.CASCADE,
+        related_name='products',
+        null=True,  # Nullable for backward compatibility
+        blank=True,
+        db_index=True,
+        help_text="Retailer selling this product"
+    )
+    
+    quantity = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Available stock quantity"
+    )
+    
+    STOCK_STATUS_CHOICES = (
+        ('in_stock', 'In Stock'),
+        ('out_of_stock', 'Out of Stock'),
+        ('low_stock', 'Low Stock'),
+    )
+    stock_status = models.CharField(
+        max_length=20,
+        choices=STOCK_STATUS_CHOICES,
+        default='in_stock',
+        db_index=True
+    )
+    # ✅ Auto-update stock_status based on quantity
+    def save(self, *args, **kwargs):
+        # Auto-set stock_status based on quantity
+        if self.quantity == 0:
+            self.stock_status = 'out_of_stock'
+        elif self.quantity <= 10:  # Low stock threshold
+            self.stock_status = 'low_stock'
+        else:
+            self.stock_status = 'in_stock'
+        
+        super().save(*args, **kwargs)
+    
+    # ✅ ADD THIS PROPERTY
+    @property
+    def retailer_name(self):
+        """Returns retailer business name or 'Unknown'"""
+        return self.retailer.business_name if self.retailer else 'Unknown'
+
     class Meta:
         db_table = 'shop_products'
         indexes = [
@@ -579,7 +625,7 @@ class MixProduct(models.Model):
     #     blank=True,
     #     help_text="When bleach timer was started"
     # )
-    is_bleach_timer_on = models.BooleanField(default=False)
+    is_bleach_timer_on = models.BooleanField(default=True)
     # bleach_timer_started_at = models.CharField(  # ✅ Changed to CharField
     #     max_length=50,
     #     null=True,

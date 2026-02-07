@@ -23,7 +23,10 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('auth/',include('authapp.urls')),
     path('client/',include('clientapp.urls')),
-    path('mix/',include('mixapp.urls'))
+    path('mix/',include('mixapp.urls')),
+    path('appointment/',include('appointmentapp.urls')),
+    path('retailer/', include('retailerapp.urls')),  # ✅ ADD THIS
+    path('payment/', include('paymentapp.urls')),
 ]
 if settings.DEBUG:
     urlpatterns += static(

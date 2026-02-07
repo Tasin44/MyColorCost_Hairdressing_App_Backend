@@ -13,11 +13,13 @@ from clientapp.models import Client
 class ShopProductListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for product listings"""
     image_url = serializers.SerializerMethodField()
- 
+    retailer_name = serializers.SerializerMethodField()  # ✅ ADD THIS
+
     class Meta:
         model = ShopProduct
         fields = [
-            'id', 'name', 'image_url', 'market_price', 'average_rating', 'total_reviews'
+            'id', 'name', 'image_url', 'market_price', 'average_rating', 'total_reviews',
+            'quantity', 'stock_status', 'retailer_name'  # ✅ ADD THESE
         ]
  
     def get_image_url(self, obj):
@@ -28,19 +30,31 @@ class ShopProductListSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.image.url)
             return obj.image.url
         return None
- 
+    
+    # ✅ ADD THIS METHOD
+    def get_retailer_name(self, obj):
+        """Returns retailer business name or 'Unknown'"""
+        if obj.retailer:
+            return obj.retailer.business_name
+        return "Unknown"
  
 class ShopProductDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for single product view"""
     image_url = serializers.SerializerMethodField()
     in_stock = serializers.BooleanField(read_only=True)
+    retailer_name = serializers.SerializerMethodField()  # ✅ ADD THIS
+    delivery_areas = serializers.SerializerMethodField()  # ✅ ADD THIS
+    delivery_charge = serializers.SerializerMethodField()  # ✅ ADD THIS
+
 
     class Meta:
         model = ShopProduct
         fields = [
             'id', 'name', 'description', 'image_url',
             'market_price', 'average_rating',
-            'total_reviews', 'barcode', 'stock_quantity','in_stock','expiry_date', 'created_at','api_data'  # ✅ ADD THIS
+            'total_reviews', 'barcode', 'stock_quantity','in_stock','expiry_date', 'created_at','api_data',  # ✅ ADD THIS
+            'quantity', 'stock_status', 'retailer_name',  # ✅ ADD THESE
+            'delivery_areas', 'delivery_charge'  # ✅ ADD THESE
         ]
  
     def get_image_url(self, obj):
@@ -50,7 +64,28 @@ class ShopProductDetailSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.image.url)
             return obj.image.url
         return None
- 
+    # ✅ ADD THIS METHOD
+    def get_retailer_name(self, obj):
+        if obj.retailer:
+            return obj.retailer.business_name
+        return "Unknown"
+    
+    # ✅ ADD THIS METHOD
+    def get_delivery_areas(self, obj):
+        """Get all delivery areas for this retailer"""
+        if obj.retailer:
+            return list(
+                obj.retailer.delivery_areas.filter(is_active=True)
+                .values_list('area_name', flat=True)
+            )
+        return []
+    
+    # ✅ ADD THIS METHOD
+    def get_delivery_charge(self, obj):
+        """Get retailer's delivery charge"""
+        if obj.retailer:
+            return str(obj.retailer.delivery_charge)
+        return "0.00"
  
 class UserProductSerializer(serializers.ModelSerializer):
     """Serializer for user's product inventory"""
@@ -250,7 +285,89 @@ class MixProductSerializer(serializers.ModelSerializer):
  
     # def get_bleach_timer_started_at(self, obj):
     #     return obj.bleach_timer_started_at.isoformat() if obj.bleach_timer_started_at else None
-    
+
+
+# ...existing code...
+
+class MixProductInputSerializer(serializers.Serializer):
+    """Serializer for product input when creating mix"""
+    user_product_id = serializers.IntegerField()
+    used_weight = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01')
+    )
+    user_price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01')
+    )
+    market_price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        allow_null=True
+    )
+    # ✅ ADD these to MixProductInputSerializer
+    is_bleach_timer_on = serializers.BooleanField(default=False)
+    bleach_timer_start_time = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=50)
+    bleach_timer_duration = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=30)
+
+    def validate_user_product_id(self, value):
+        """Validate user product exists and is available"""
+        user = self.context['request'].user
+        
+        # Get correct owner
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            owner = user.staff_profile.main_user
+        else:
+            owner = user
+        
+        try:
+            user_product = UserProduct.objects.get(id=value, user=owner)
+        except UserProduct.DoesNotExist:
+            raise serializers.ValidationError("Product not found in inventory")
+        
+        if not user_product.is_available:
+            raise serializers.ValidationError("This product is not available")
+        
+        return value
+
+    def validate(self, data):
+        """Validate sufficient weight is available"""
+        user = self.context['request'].user
+        
+        # Get correct owner
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            owner = user.staff_profile.main_user
+        else:
+            owner = user
+        
+        try:
+            user_product = UserProduct.objects.get(
+                id=data['user_product_id'],
+                user=owner
+            )
+        except UserProduct.DoesNotExist:
+            raise serializers.ValidationError({
+                'user_product_id': "Product not found in inventory"
+            })
+
+        # Check if sufficient weight is available
+        if user_product.current_weight_grams < data['used_weight']:
+            raise serializers.ValidationError({
+                'used_weight': f"Insufficient weight. Available: {user_product.current_weight_grams}g"
+            })
+
+        # Store user_product in validated_data for later use
+        data['user_product'] = user_product
+        
+        return data
+
+# ...existing code...
+
+
+
 class AddProductToMixSerializer(serializers.Serializer):
     """Serializer for adding a product to a mix"""
     user_product_id = serializers.IntegerField()
@@ -429,66 +546,183 @@ class MixDetailSerializer(serializers.ModelSerializer):
             'email': obj.user.email
         }
 
- 
-class CreateMixSerializer(serializers.ModelSerializer):
-    """Serializer for creating a new mix"""
-    # client_id = serializers.IntegerField(write_only=True)
-    created_date = serializers.SerializerMethodField()
-    created_time = serializers.SerializerMethodField()
+#previous
+# class CreateMixSerializer(serializers.ModelSerializer):
+#     # client_id = serializers.IntegerField(write_only=True)
+#     created_date = serializers.SerializerMethodField()
+#     created_time = serializers.SerializerMethodField()
+#     class Meta:
+#         model = Mix
+#         fields = [
+#             'mix_name', 'service_type', 'created_date', 'created_time'
+#         ]
+#     def validate_mix_name(self, value):
+#         if not value or not value.strip():
+#             raise serializers.ValidationError("Mix name is required")
+#         return value.strip()
 
+#     def get_created_date(self, obj):
+#         return obj.created_at.date()
+
+#     def get_created_time(self, obj):
+#         return obj.created_at.time()
+    
+#     @transaction.atomic
+#     def create(self, validated_data):
+#         """Create mix"""
+#         user = self.context['request'].user
+#         # Create mix
+#         mix = Mix.objects.create(
+#             user=user,
+#             sub_user=None,  # Set if request from staff
+#             **validated_data
+#         )
+#         return mix
+
+
+
+class CreateMixSerializer(serializers.ModelSerializer):
+    """Serializer for creating a new mix with products in one request"""
+    products = MixProductInputSerializer(many=True, write_only=True)
+    charged_amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        allow_null=True
+    )
+    # is_bleach_timer_on = serializers.BooleanField(default=False)
+    # bleach_timer_start_time = serializers.CharField(
+    #     required=False,
+    #     allow_null=True,
+    #     allow_blank=True,
+    #     max_length=50
+    # )
+    # bleach_timer_duration = serializers.CharField(
+    #     required=False,
+    #     allow_null=True,
+    #     allow_blank=True,
+    #     max_length=30
+    # )
+    
     class Meta:
         model = Mix
-        fields = [
-            'mix_name', 'service_type', 'created_date', 'created_time'
-        ]
-    
-    '''
-    def validate_client_id(self, value):
-        user = self.context['request'].user
-        try:
-            Client.objects.get(id=value, user=user)
-        except Client.DoesNotExist:
-            raise serializers.ValidationError("Client not found")
- 
-        return value
-    '''
+        # fields = [
+        #     'mix_name', 'service_type', 'charged_amount',
+        #     'is_bleach_timer_on', 'bleach_timer_start_time', 
+        #     'bleach_timer_duration', 'products'
+        # ]
+        fields = ['mix_name', 'service_type', 'charged_amount', 'products']  # ✅ Only these
 
- 
     def validate_mix_name(self, value):
         """Validate mix name"""
         if not value or not value.strip():
             raise serializers.ValidationError("Mix name is required")
         return value.strip()
- 
-    # def validate_charged_amount(self, value):
-    #     """Validate charged amount if provided"""
-    #     if value is not None and value < 0:
-    #         raise serializers.ValidationError("Charged amount cannot be negative")
-    #     return value
-
-    def get_created_date(self, obj):
-        return obj.created_at.date()
-
-    def get_created_time(self, obj):
-        return obj.created_at.time()
+    
+    def validate_products(self, products):
+        """Validate products list"""
+        if not products:
+            raise serializers.ValidationError("At least one product is required")
+        
+        user = self.context['request'].user
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            owner = user.staff_profile.main_user
+        else:
+            owner = user
+        
+        # Validate each product
+        for product in products:
+            user_product_id = product['user_product_id']
+            used_weight = product['used_weight']
+            
+            try:
+                user_product = UserProduct.objects.get(id=user_product_id, user=owner)
+            except UserProduct.DoesNotExist:
+                raise serializers.ValidationError(
+                    f"Product with id {user_product_id} not found in inventory"
+                )
+            
+            if not user_product.is_available:
+                raise serializers.ValidationError(
+                    f"Product '{user_product.product.name}' is not available"
+                )
+            
+            if user_product.current_weight_grams < used_weight:
+                raise serializers.ValidationError(
+                    f"Insufficient weight for '{user_product.product.name}'. "
+                    f"Available: {user_product.current_weight_grams}g"
+                )
+        
+        return products
     
     @transaction.atomic
     def create(self, validated_data):
-        """Create mix"""
+        """Create mix with all products in one transaction"""
         user = self.context['request'].user
-        #client_id = validated_data.pop('client_id')
-      #  client = Client.objects.get(id=client_id)
- 
+        
+        # Determine owner and sub_user
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            staff_profile = user.staff_profile
+            owner = staff_profile.main_user
+            sub_user = staff_profile
+        else:
+            owner = user
+            sub_user = None
+        
+        # Extract products and bleach timer data
+        products_data = validated_data.pop('products')
+        # is_bleach_timer_on = validated_data.pop('is_bleach_timer_on', False)
+        # bleach_timer_start_time = validated_data.pop('bleach_timer_start_time', None)
+        # bleach_timer_duration = validated_data.pop('bleach_timer_duration', None)
+        
         # Create mix
         mix = Mix.objects.create(
-            user=user,
-            sub_user=None,  # Set if request from staff
-            #client=client,
+            user=owner,
+            sub_user=sub_user,
             **validated_data
         )
- 
+        
+        # Add products to mix
+        for product_data in products_data:
+            user_product = UserProduct.objects.get(
+                id=product_data['user_product_id'],
+                user=owner
+            )
+            
+            # Get market_price
+            market_price = product_data.get('market_price')
+            if not market_price:
+                market_price = user_product.product.market_price
+            
+            # Create mix product
+            MixProduct.objects.create(
+                mix=mix,
+                user_product=user_product,
+                product_name=user_product.product.name,
+                used_weight=product_data['used_weight'],
+                market_price=market_price,
+                user_price=product_data['user_price'],
+                # is_bleach_timer_on=is_bleach_timer_on,
+                # bleach_timer_start_time=bleach_timer_start_time if is_bleach_timer_on else None,
+                # bleach_timer_duration=bleach_timer_duration if is_bleach_timer_on else None
+                is_bleach_timer_on=product_data.get('is_bleach_timer_on', False),  # ✅ From product
+                bleach_timer_start_time=product_data.get('bleach_timer_start_time'),  # ✅ From product
+                bleach_timer_duration=product_data.get('bleach_timer_duration')  # ✅ From product
+            )
+            
+            # Reduce product weight
+            user_product.reduce_weight(product_data['used_weight'])
+        
+        # Calculate mix total cost and profit
+        mix.calculate_total_cost()
+        
+        # Update client statistics if client exists
+        if mix.client:
+            mix.client.update_stats()
+        
         return mix
- 
+
+# ...existing code...
  
 class UpdateMixSerializer(serializers.ModelSerializer):
     """Serializer for updating mix details"""

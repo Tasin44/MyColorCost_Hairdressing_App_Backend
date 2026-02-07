@@ -46,6 +46,9 @@ INSTALLED_APPS = [
     'authapp',
     'clientapp',
     'mixapp',
+    'appointmentapp',
+    'retailerapp',  # ✅ ADD THIS
+    'paymentapp'
     # 'productapp',
 ]
 
@@ -243,8 +246,8 @@ AUTH_USER_MODEL = 'authapp.User'#Since you're using a custom User model, make su
 
 
 
-STRIPE_SECRET_KEY = "sk_test_51S6Nz0I78cco2qGQnQA7shrT5SvbtaTl8CYVvsgVNzSSR3kuNhOwl4fdiiMIAzyBe3l9TNfzfY66deKHWXebkchW00iscXixP3" # from your Stripe dashboard
-STRIPE_PUBLIC_KEY = "pk_test_51S6Nz0I78cco2qGQGEQ7XyYNquxKiXDHCKym6hp8vEIb6UMTTZR1g0ZevvtiM8lWsEKwLsgWix6U7P4JqM5r0NDG00QNoI8tkt" 
+STRIPE_SECRET_KEY = "sk_test_51SJRZxHPckdqCiP923JxGvV19Hjo8PBdG9CLbIvpOKYMrozDGoPsoXDgbJjPFrlRmOj3eRIAhsUv2Ztxj2xCqXBX00GbEMdfiO" # from your Stripe dashboard
+STRIPE_PUBLIC_KEY = "pk_test_51SJRZxHPckdqCiP90dDxnY7aqJLHWMRbX6hOxHVWnPmnmMzGljcXl5BF3CWwdsQDedCpC6odOm5OuEw9zYJ8m6El00l7mKiOUW" 
 
 stripe.api_key = STRIPE_SECRET_KEY
 # STRIPE_WEBHOOK_SECRET = 'whsec_tk2uDcteoL1zhBnkK0BrJVZd3MwZqiY8' # I got it from stripe dashboard, which is smaller

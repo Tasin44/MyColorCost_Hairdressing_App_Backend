@@ -54,6 +54,65 @@ class StandardResponseMixin:
 # SHOP PRODUCTS (Master Catalog)
 # ============================================
  
+#it was previous
+# class ShopProductListView(StandardResponseMixin, APIView):
+#     """
+#     List all shop products with search and filtering.
+#     These are products that can be scanned and added to inventory.
+#     """
+#     permission_classes = [IsAuthenticated]
+ 
+#     def get(self, request):
+#         """
+#         Get product list with optional filtering.
+ 
+#         Query params:
+#         - search: Search by name or retailer
+#         - min_rating: Filter by minimum rating
+#         - retailer: Filter by retailer name
+#         """
+#         queryset = ShopProduct.objects.all()
+ 
+#         # Search
+#         search = request.query_params.get('search', '').strip()
+#         if search:
+#             queryset = queryset.filter(
+#                 Q(name__icontains=search) |
+#                 Q(retailer_name__icontains=search)
+#             )
+ 
+#         # Filter by rating
+#         min_rating = request.query_params.get('min_rating')
+#         if min_rating:
+#             try:
+#                 queryset = queryset.filter(average_rating__gte=float(min_rating))
+#             except ValueError:
+#                 pass
+ 
+#         # Filter by retailer
+#         retailer = request.query_params.get('retailer', '').strip()
+#         if retailer:
+#             queryset = queryset.filter(retailer_name__iexact=retailer)
+ 
+#         # Order by rating and name
+#         queryset = queryset.order_by('-average_rating', 'name')
+ 
+#         serializer = ShopProductListSerializer(
+#             queryset,
+#             many=True,
+#             context={'request': request}
+#         )
+ 
+#         return self.success_response(
+#             data={
+#                 'products': serializer.data,
+#                 'total_count': queryset.count()
+#             },
+#             message="Products retrieved successfully",
+#             status_code=200
+#         )
+ 
+#newly added
 class ShopProductListView(StandardResponseMixin, APIView):
     """
     List all shop products with search and filtering.
@@ -69,15 +128,18 @@ class ShopProductListView(StandardResponseMixin, APIView):
         - search: Search by name or retailer
         - min_rating: Filter by minimum rating
         - retailer: Filter by retailer name
+        - stock_status: Filter by stock status (NEW)
+        - retailer_id: Filter by retailer ID (NEW)
         """
-        queryset = ShopProduct.objects.all()
+        # ✅ ADD select_related for optimization
+        queryset = ShopProduct.objects.select_related('retailer').order_by('-average_rating', 'name')
  
-        # Search
+        # ✅ FIX: Search by name or retailer business name
         search = request.query_params.get('search', '').strip()
         if search:
             queryset = queryset.filter(
                 Q(name__icontains=search) |
-                Q(retailer_name__icontains=search)
+                Q(retailer__business_name__icontains=search)  # ✅ FIXED
             )
  
         # Filter by rating
@@ -88,13 +150,20 @@ class ShopProductListView(StandardResponseMixin, APIView):
             except ValueError:
                 pass
  
-        # Filter by retailer
+        # ✅ FIX: Filter by retailer business name
         retailer = request.query_params.get('retailer', '').strip()
         if retailer:
-            queryset = queryset.filter(retailer_name__iexact=retailer)
- 
-        # Order by rating and name
-        queryset = queryset.order_by('-average_rating', 'name')
+            queryset = queryset.filter(retailer__business_name__iexact=retailer)  # ✅ FIXED
+        
+        # ✅ NEW: Filter by stock status
+        stock_status = request.query_params.get('stock_status')
+        if stock_status in ['in_stock', 'out_of_stock', 'low_stock']:
+            queryset = queryset.filter(stock_status=stock_status)
+        
+        # ✅ NEW: Filter by retailer ID
+        retailer_id = request.query_params.get('retailer_id')
+        if retailer_id:
+            queryset = queryset.filter(retailer_id=retailer_id)
  
         serializer = ShopProductListSerializer(
             queryset,
@@ -110,31 +179,83 @@ class ShopProductListView(StandardResponseMixin, APIView):
             message="Products retrieved successfully",
             status_code=200
         )
+
+#it was previous
+# class ShopProductDetailView(StandardResponseMixin, APIView):
+#     """Get detailed information about a specific product"""
+#     permission_classes = [IsAuthenticated]
  
+#     def get(self, request, product_id):
+#         """Get product details including reviews"""
+#         try:
+#             product = ShopProduct.objects.prefetch_related('reviews').get(
+#                 id=product_id
+#             )
+#         except ShopProduct.DoesNotExist:
+#             return self.error_response(
+#                 "Product not found",
+#                 status_code=404
+#             )
  
+#         # Get product details
+#         serializer = ShopProductDetailSerializer(
+#             product,
+#             context={'request': request}
+#         )
+ 
+#         # Get recent reviews
+#         recent_reviews = product.reviews.select_related('user').order_by(
+#             '-created_at'
+#         )[:10]
+ 
+#         reviews_serializer = ProductReviewSerializer(
+#             recent_reviews,
+#             many=True
+#         )
+ 
+#         return self.success_response(
+#             data={
+#                 'product': serializer.data,
+#                 'reviews': reviews_serializer.data,
+#                 'review_count': product.total_reviews
+#             },
+#             message="Product details retrieved successfully",
+#             status_code=200
+#         )
+ 
+
+#newly added 
 class ShopProductDetailView(StandardResponseMixin, APIView):
     """Get detailed information about a specific product"""
     permission_classes = [IsAuthenticated]
  
     def get(self, request, product_id):
-        """Get product details including reviews"""
+        """
+        Get product details including reviews.
+        Now also includes retailer info and delivery areas.
+        """
         try:
-            product = ShopProduct.objects.prefetch_related('reviews').get(
-                id=product_id
-            )
+            # ✅ Optimized query - handles NULL retailer gracefully
+            product = ShopProduct.objects.select_related(
+                'retailer'
+            ).prefetch_related(
+                'reviews__user',  # ✅ KEEP existing reviews prefetch
+                'retailer__delivery_areas'  # ✅ NEW: Add delivery areas
+            ).get(id=product_id)
+            
         except ShopProduct.DoesNotExist:
             return self.error_response(
                 "Product not found",
                 status_code=404
             )
  
-        # Get product details
+        # ✅ EXISTING: Get product details
         serializer = ShopProductDetailSerializer(
             product,
             context={'request': request}
         )
  
-        # Get recent reviews
+        # ✅ EXISTING: Get recent reviews
         recent_reviews = product.reviews.select_related('user').order_by(
             '-created_at'
         )[:10]
@@ -144,6 +265,7 @@ class ShopProductDetailView(StandardResponseMixin, APIView):
             many=True
         )
  
+        # ✅ KEEP existing response structure
         return self.success_response(
             data={
                 'product': serializer.data,
@@ -153,8 +275,6 @@ class ShopProductDetailView(StandardResponseMixin, APIView):
             message="Product details retrieved successfully",
             status_code=200
         )
- 
- 
 # ============================================
 # USER PRODUCTS (Inventory)
 # ============================================
@@ -246,38 +366,65 @@ class UserProductListView(StandardResponseMixin, APIView):
             message="Inventory retrieved successfully",
             status_code=200
         )
+    
+    #previous
+    # @transaction.atomic
+    # def post(self, request):
+    #     """
+    #     Add product to user inventory (simulates scanning).
+    #     In production, this would be called after barcode scan.
+    #     """
+    #     serializer = CreateUserProductSerializer(
+    #         data=request.data,
+    #         context={'request': request}
+    #     )
  
+    #     if serializer.is_valid():
+    #         user_product = serializer.save()
+ 
+    #         response_serializer = UserProductSerializer(
+    #             user_product,
+    #             context={'request': request}
+    #         )
+ 
+    #         return self.success_response(
+    #             data=response_serializer.data,
+    #             message="Product added to inventory successfully",
+    #             status_code=201
+    #         )
+ 
+    #     return self.error_response(
+    #         "Failed to add product to inventory",
+    #         status_code=400,
+    #         data=serializer.errors
+    #     )
     @transaction.atomic
     def post(self, request):
-        """
-        Add product to user inventory (simulates scanning).
-        In production, this would be called after barcode scan.
-        """
-        serializer = CreateUserProductSerializer(
+        """Create new mix with products in one request"""
+        serializer = CreateMixSerializer(
             data=request.data,
             context={'request': request}
         )
  
         if serializer.is_valid():
-            user_product = serializer.save()
+            mix = serializer.save()
  
-            response_serializer = UserProductSerializer(
-                user_product,
+            detail_serializer = MixDetailSerializer(
+                mix,
                 context={'request': request}
             )
  
             return self.success_response(
-                data=response_serializer.data,
-                message="Product added to inventory successfully",
+                data=detail_serializer.data,
+                message="Mix created successfully with all products",
                 status_code=201
             )
  
         return self.error_response(
-            "Failed to add product to inventory",
+            "Failed to create mix",
             status_code=400,
             data=serializer.errors
         )
- 
  
 class UserProductDetailView(StandardResponseMixin, APIView):
     """Get, update, or delete a specific product from user inventory"""
@@ -611,7 +758,9 @@ class MixListCreateView(StandardResponseMixin, APIView):
             message="Mixes retrieved successfully",
             status_code=200
         )
- 
+    
+    #previous 
+    '''
     @transaction.atomic
     def post(self, request):
         """Create new mix (without products initially)"""
@@ -662,8 +811,32 @@ class MixListCreateView(StandardResponseMixin, APIView):
             status_code=400,
             data=serializer.errors
         )
- 
- 
+
+    '''
+    @transaction.atomic
+    def post(self, request):
+        """Create new mix with products"""
+        serializer = CreateMixSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            mix = serializer.save()  # ✅ Use serializer.save() instead of Mix.objects.create()
+            
+            detail_serializer = MixDetailSerializer(mix, context={'request': request})
+            
+            return self.success_response(
+                data=detail_serializer.data,
+                message="Mix created successfully with products.",
+                status_code=201
+            )
+        
+        return self.error_response(
+            "Failed to create mix",
+            status_code=400,
+            data=serializer.errors
+        )
 # Continued in Part 2...
 # mixapp/views.py (Part 2)
  
@@ -1237,69 +1410,246 @@ class MixSetChargedAmountView(StandardResponseMixin, APIView):
 
 
 #---------------------------------------------------------------
+
+#my previous working code 
+# class ScanBarcodeView(StandardResponseMixin, APIView):
+#     """
+#     Scan barcode and retrieve product information
+#     Flow:
+#     1. Check if product exists in our database
+#     2. If not, query Barcode Spider API
+#     3. If found in API, create ShopProduct
+#     4. If not found anywhere, return manual_entry_required flag
+#     """
+#     permission_classes = [IsAuthenticated]
+    
+#     @transaction.atomic
+#     def post(self, request):
+#         """
+#         Scan barcode and get product info
+        
+#         Request body:
+#         - barcode: Scanned barcode/UPC string
+        
+#         Response:
+#         - found_in_db: bool (product exists in database)
+#         - found_in_api: bool (product found via Barcode Spider)
+#         - manual_entry_required: bool (need manual entry)
+#         - product: Product data if found
+#         - message: Status message
+#         """
+#         # Validate request
+#         serializer = BarcodeScanRequestSerializer(data=request.data)
+#         if not serializer.is_valid():
+#             return self.error_response(
+#                 "Invalid barcode data",
+#                 status_code=400,
+#                 data=serializer.errors
+#             )
+        
+#         barcode = serializer.validated_data['barcode']
+#         user = request.user
+        
+#         # Get correct owner (for staff users)
+#         if user.role == 'staff' and hasattr(user, 'staff_profile'):
+#             owner = user.staff_profile.main_user
+#         else:
+#             owner = user
+        
+#         # Step 1: Check if product already exists in our database
+#         try:
+#             shop_product = ShopProduct.objects.get(barcode=barcode)
+            
+#             # Product found in DB
+#             # Create scan history
+#             ProductScanHistory.objects.create(
+#                 user=owner,
+#                 shop_product=shop_product,
+#                 barcode=barcode,
+#                 scan_type='barcode'
+#             )
+            
+#             response_data = {
+#                 'found_in_db': True,
+#                 'found_in_api': False,
+#                 'manual_entry_required': False,
+#                 'product': shop_product,
+#                 'message': 'Product found in database'
+#             }
+            
+#             response_serializer = BarcodeScanResponseSerializer(
+#                 response_data,
+#                 context={'request': request}
+#             )
+            
+#             return self.success_response(
+#                 data=response_serializer.data,
+#                 message="Product found in database",
+#                 status_code=200
+#             )
+            
+#         except ShopProduct.DoesNotExist:
+#             # Product not in DB, try Barcode Spider API
+#             pass
+        
+#         # Step 2: Query Barcode Spider API
+#         from .barcode_utils import barcode_api
+        
+#         api_result = barcode_api.lookup_barcode(barcode)
+        
+#         if api_result:
+#             # Product found in API
+#             # Create ShopProduct from API data
+#             # ✅ CHANGED: Store full API response
+#             shop_product = ShopProduct.objects.create(
+#                 name=api_result['name'],
+#                 description=api_result.get('description', ''),
+#                 barcode=barcode,
+#                 market_price=Decimal('0.00'),
+#                 average_rating=Decimal('0.00'),
+#                 total_reviews=0,
+#                 api_data=api_result.get('raw_data')  # ✅ ADD THIS - stores full JSON
+#             )
+            
+#             # Create scan history
+#             ProductScanHistory.objects.create(
+#                 user=owner,
+#                 shop_product=shop_product,
+#                 barcode=barcode,
+#                 scan_type='barcode'
+#             )
+
+#             # # ✅ FIX: Check if price/weight exist in API response
+#             # stores = api_result['raw_data'].get('Stores', [])
+#             # has_price = any(store.get('price') for store in stores)  # Check if any store has price
+#             # has_weight = bool(api_result.get('weight', '').strip())  # Check if weight exists
+#             # ✅ FIX: Check if price/weight exist in API response
+#             raw_data = api_result.get('raw_data', {})
+#             stores = raw_data.get('Stores', [])
+            
+#             # Check if ANY store has a non-empty price
+#             has_price = any(
+#                 store.get('price', '').strip() 
+#                 for store in stores
+#             )
+            
+#             # Check if weight exists and is not empty
+#             weight = api_result.get('weight', '').strip()
+#             has_weight = bool(weight)
+#             # ✅ Return FULL API response
+#             response_data = {
+#                 'found_in_db': False,
+#                 'found_in_api': True,
+#                 'manual_entry_required': not (has_price and has_weight),  # ✅ Only if missing data
+#                 'product': {
+#                     'id': shop_product.id,
+#                     'name': api_result['name'],
+#                     'description': api_result.get('description', ''),
+#                     'barcode': barcode,
+#                     'brand': api_result.get('brand', ''),
+#                     'manufacturer': api_result.get('manufacturer', ''),
+#                     'category': api_result.get('category', ''),
+#                     'image_url': api_result.get('image_url', ''),
+#                     'weight': api_result.get('weight', ''),
+#                     'model': api_result.get('model', ''),
+#                     'asin': api_result.get('asin', ''),
+#                     'mpn': api_result.get('mpn', ''),
+#                     'upc': api_result.get('upc', ''),
+#                     'ean': api_result.get('ean', ''),
+#                     'color': api_result.get('color', ''),
+#                     'size': api_result.get('size', ''),
+#                     'stores': api_result['raw_data'].get('Stores', []),  # ✅ Store info
+#                     'needs_price': not has_price,      # ✅ TRUE only if empty/missing
+#                     'needs_weight': not has_weight
+#                 },
+#                 'message': 'Product found. Please enter price and weight if missing.'
+#             }
+            
+#             response_serializer = BarcodeScanResponseSerializer(
+#                 response_data,
+#                 context={'request': request}
+#             )
+            
+#             return self.success_response(
+#                 data=response_serializer.data,
+#                 message="Product found in API. Please complete product details.",
+#                 status_code=200
+#             )
+        
+#         # Step 3: Product not found anywhere - require manual entry
+#         response_data = {
+#             'found_in_db': False,
+#             'found_in_api': False,
+#             'manual_entry_required': True,
+#             'product': None,
+#             'message': 'Product not found. Please enter product details manually.'
+#         }
+        
+#         response_serializer = BarcodeScanResponseSerializer(
+#             response_data,
+#             context={'request': request}
+#         )
+        
+#         return self.success_response(
+#             data=response_serializer.data,
+#             message="Product not found. Manual entry required.",
+#             status_code=200
+#         )
+
 class ScanBarcodeView(StandardResponseMixin, APIView):
-    """
-    Scan barcode and retrieve product information
-    Flow:
-    1. Check if product exists in our database
-    2. If not, query Barcode Spider API
-    3. If found in API, create ShopProduct
-    4. If not found anywhere, return manual_entry_required flag
-    """
     permission_classes = [IsAuthenticated]
     
     @transaction.atomic
     def post(self, request):
-        """
-        Scan barcode and get product info
-        
-        Request body:
-        - barcode: Scanned barcode/UPC string
-        
-        Response:
-        - found_in_db: bool (product exists in database)
-        - found_in_api: bool (product found via Barcode Spider)
-        - manual_entry_required: bool (need manual entry)
-        - product: Product data if found
-        - message: Status message
-        """
-        # Validate request
-        serializer = BarcodeScanRequestSerializer(data=request.data)
-        if not serializer.is_valid():
-            return self.error_response(
-                "Invalid barcode data",
-                status_code=400,
-                data=serializer.errors
-            )
-        
-        barcode = serializer.validated_data['barcode']
         user = request.user
         
-        # Get correct owner (for staff users)
+        # Get correct owner
         if user.role == 'staff' and hasattr(user, 'staff_profile'):
             owner = user.staff_profile.main_user
         else:
             owner = user
         
-        # Step 1: Check if product already exists in our database
+        serializer = BarcodeScanRequestSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return self.error_response(
+                "Invalid barcode format",
+                status_code=400,
+                data=serializer.errors
+            )
+        
+        barcode = serializer.validated_data['barcode']
+        
+        # Check if product exists in database
         try:
             shop_product = ShopProduct.objects.get(barcode=barcode)
             
-            # Product found in DB
-            # Create scan history
+            # ✅ Create ProductScanHistory
             ProductScanHistory.objects.create(
                 user=owner,
                 shop_product=shop_product,
                 barcode=barcode,
                 scan_type='barcode'
+            )
+            
+            # ✅ FIX: Check if already in user's inventory
+            user_product, created = UserProduct.objects.get_or_create(
+                user=owner,
+                product=shop_product,
+                defaults={
+                    'current_weight_grams': Decimal('0.00'),  # User adds weight later
+                    'user_price': shop_product.market_price,
+                    'is_available': False  # Not available until weight added
+                }
             )
             
             response_data = {
                 'found_in_db': True,
                 'found_in_api': False,
-                'manual_entry_required': False,
+                'manual_entry_required': shop_product.market_price == Decimal('0.00'),
                 'product': shop_product,
-                'message': 'Product found in database'
+                'user_product_id': user_product.id,  # ✅ Include this
+                'message': 'Product found. Add weight to complete.' if created else 'Product already in inventory.'
             }
             
             response_serializer = BarcodeScanResponseSerializer(
@@ -1309,117 +1659,110 @@ class ScanBarcodeView(StandardResponseMixin, APIView):
             
             return self.success_response(
                 data=response_serializer.data,
-                message="Product found in database",
+                message="Product scanned successfully",
                 status_code=200
             )
             
         except ShopProduct.DoesNotExist:
-            # Product not in DB, try Barcode Spider API
-            pass
-        
-        # Step 2: Query Barcode Spider API
-        from .barcode_utils import barcode_api
-        
-        api_result = barcode_api.lookup_barcode(barcode)
-        
-        if api_result:
-            # Product found in API
-            # Create ShopProduct from API data
-            # ✅ CHANGED: Store full API response
-            shop_product = ShopProduct.objects.create(
-                name=api_result['name'],
-                description=api_result.get('description', ''),
-                barcode=barcode,
-                market_price=Decimal('0.00'),
-                average_rating=Decimal('0.00'),
-                total_reviews=0,
-                api_data=api_result.get('raw_data')  # ✅ ADD THIS - stores full JSON
-            )
+            from .barcode_utils import barcode_api
             
-            # Create scan history
-            ProductScanHistory.objects.create(
-                user=owner,
-                shop_product=shop_product,
-                barcode=barcode,
-                scan_type='barcode'
-            )
-
-            # # ✅ FIX: Check if price/weight exist in API response
-            # stores = api_result['raw_data'].get('Stores', [])
-            # has_price = any(store.get('price') for store in stores)  # Check if any store has price
-            # has_weight = bool(api_result.get('weight', '').strip())  # Check if weight exists
-            # ✅ FIX: Check if price/weight exist in API response
-            raw_data = api_result.get('raw_data', {})
-            stores = raw_data.get('Stores', [])
+            api_result = barcode_api.lookup_barcode(barcode)
             
-            # Check if ANY store has a non-empty price
-            has_price = any(
-                store.get('price', '').strip() 
-                for store in stores
-            )
+            if api_result:
+                # Create ShopProduct from API
+                shop_product = ShopProduct.objects.create(
+                    name=api_result['name'],
+                    description=api_result.get('description', ''),
+                    barcode=barcode,
+                    market_price=Decimal('0.00'),
+                    api_data=api_result.get('raw_data')
+                )
+                
+                # Create scan history
+                ProductScanHistory.objects.create(
+                    user=owner,
+                    shop_product=shop_product,
+                    barcode=barcode,
+                    scan_type='barcode'
+                )
+                
+                # ✅ FIX: Create UserProduct immediately with 0 weight
+                user_product = UserProduct.objects.create(
+                    user=owner,
+                    product=shop_product,
+                    current_weight_grams=Decimal('0.00'),
+                    user_price=Decimal('0.00'),
+                    is_available=False  # Not available until weight/price added
+                )
+                
+                # Check price/weight from API
+                raw_data = api_result.get('raw_data', {})
+                stores = raw_data.get('Stores', [])
+                has_price = any(store.get('price', '').strip() for store in stores)
+                has_weight = bool(api_result.get('weight', '').strip())
+                
+                # response_data = {
+                #     'found_in_db': False,
+                #     'found_in_api': True,
+                #     'manual_entry_required': not (has_price and has_weight),
+                #     'product': {
+                #         'id': shop_product.id,
+                #         'user_product_id': user_product.id,  # ✅ Include this
+                #         'name': api_result['name'],
+                #         'description': api_result.get('description', ''),
+                #         'barcode': barcode,
+                #         'brand': api_result.get('brand', ''),
+                #         'category': api_result.get('category', ''),
+                #         'image_url': api_result.get('image_url', ''),
+                #         'weight': api_result.get('weight', ''),
+                #         'stores': raw_data.get('Stores', []),
+                #         'needs_price': not has_price,
+                #         'needs_weight': not has_weight
+                #     },
+                response_data = {
+                    'found_in_db': False,
+                    'found_in_api': True,
+                    'manual_entry_required': not (has_price and has_weight),
+                    'product': {
+                        'id': shop_product.id,
+                        'user_product_id': user_product.id,
+                        'name': api_result['name'],
+                        'description': api_result.get('description', ''),
+                        'barcode': barcode,
+                        'brand': api_result.get('brand', ''),
+                        'manufacturer': api_result.get('manufacturer', ''),  # ✅ ADD
+                        'category': api_result.get('category', ''),
+                        'image_url': api_result.get('image_url', ''),
+                        'weight': api_result.get('weight', ''),
+                        'model': api_result.get('model', ''),  # ✅ ADD
+                        'asin': api_result.get('asin', ''),  # ✅ ADD
+                        'mpn': api_result.get('mpn', ''),  # ✅ ADD
+                        'upc': api_result.get('upc', ''),  # ✅ ADD
+                        'ean': api_result.get('ean', ''),  # ✅ ADD
+                        'color': api_result.get('color', ''),  # ✅ ADD
+                        'size': api_result.get('size', ''),  # ✅ ADD
+                        'stores': raw_data.get('Stores', []),
+                        'needs_price': not has_price,
+                        'needs_weight': not has_weight
+                    },
+                    'message': 'Product found. Add weight/price to activate.'
+                }
+                
+                response_serializer = BarcodeScanResponseSerializer(
+                    response_data,
+                    context={'request': request}
+                )
+                
+                return self.success_response(
+                    data=response_serializer.data,
+                    message="Product found in API. Please complete product details.",
+                    status_code=200
+                )
             
-            # Check if weight exists and is not empty
-            weight = api_result.get('weight', '').strip()
-            has_weight = bool(weight)
-            # ✅ Return FULL API response
-            response_data = {
-                'found_in_db': False,
-                'found_in_api': True,
-                'manual_entry_required': not (has_price and has_weight),  # ✅ Only if missing data
-                'product': {
-                    'id': shop_product.id,
-                    'name': api_result['name'],
-                    'description': api_result.get('description', ''),
-                    'barcode': barcode,
-                    'brand': api_result.get('brand', ''),
-                    'manufacturer': api_result.get('manufacturer', ''),
-                    'category': api_result.get('category', ''),
-                    'image_url': api_result.get('image_url', ''),
-                    'weight': api_result.get('weight', ''),
-                    'model': api_result.get('model', ''),
-                    'asin': api_result.get('asin', ''),
-                    'mpn': api_result.get('mpn', ''),
-                    'upc': api_result.get('upc', ''),
-                    'ean': api_result.get('ean', ''),
-                    'color': api_result.get('color', ''),
-                    'size': api_result.get('size', ''),
-                    'stores': api_result['raw_data'].get('Stores', []),  # ✅ Store info
-                    'needs_price': not has_price,      # ✅ TRUE only if empty/missing
-                    'needs_weight': not has_weight
-                },
-                'message': 'Product found. Please enter price and weight if missing.'
-            }
-            
-            response_serializer = BarcodeScanResponseSerializer(
-                response_data,
-                context={'request': request}
+            return self.error_response(
+                "Product not found in database or API",
+                status_code=404
             )
-            
-            return self.success_response(
-                data=response_serializer.data,
-                message="Product found in API. Please complete product details.",
-                status_code=200
-            )
-        
-        # Step 3: Product not found anywhere - require manual entry
-        response_data = {
-            'found_in_db': False,
-            'found_in_api': False,
-            'manual_entry_required': True,
-            'product': None,
-            'message': 'Product not found. Please enter product details manually.'
-        }
-        
-        response_serializer = BarcodeScanResponseSerializer(
-            response_data,
-            context={'request': request}
-        )
-        
-        return self.success_response(
-            data=response_serializer.data,
-            message="Product not found. Manual entry required.",
-            status_code=200
-        )
 
 
 class ManualProductEntryView(StandardResponseMixin, APIView):
