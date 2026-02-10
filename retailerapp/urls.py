@@ -3,7 +3,8 @@ from .views import (
     RetailerProfileSetupView, RetailerDashboardView,
     RetailerProductListView, RetailerProductCreateView,
     RetailerProductDetailView, MissingProductRequestView,
-    DeliveryAddressListCreateView,RetailerStripeCompleteView,RetailerStripeOnboardView
+    DeliveryAddressListCreateView,RetailerStripeCompleteView,RetailerStripeOnboardView,
+    RetailerStripeStatusView, retailer_dashboard_view
 )
 
 app_name = 'retailerapp'
@@ -29,4 +30,9 @@ urlpatterns = [
      # ✅ Stripe Connect Onboarding (NEW)
     path('stripe/onboard/', RetailerStripeOnboardView.as_view(), name='stripe-onboard'),
     path('stripe/complete/', RetailerStripeCompleteView.as_view(), name='stripe-complete'),
+
+    path('stripe/status/', RetailerStripeStatusView.as_view(), name='stripe-status'),  # NEW
+    
+    # ✅ Optional: Dashboard view
+    path('dashboard/', retailer_dashboard_view, name='dashboard-view'),  # NEW
 ]

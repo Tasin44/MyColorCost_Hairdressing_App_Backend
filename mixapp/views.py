@@ -14,7 +14,7 @@ from django.utils import timezone
 from datetime import timedelta
 from decimal import Decimal
 from rest_framework.decorators import action
-from .models import ShopProduct, UserProduct, Mix, MixProduct, ProductReview,ProductScanHistory
+from .models import ShopProduct, UserProduct, Mix, MixProduct, ProductReview, ProductScanHistory, ShoppingCart
 from clientapp.models import Client
 from .serializers import (
     ShopProductListSerializer, ShopProductDetailSerializer,
@@ -275,6 +275,7 @@ class ShopProductDetailView(StandardResponseMixin, APIView):
             message="Product details retrieved successfully",
             status_code=200
         )
+
 # ============================================
 # USER PRODUCTS (Inventory)
 # ============================================
@@ -2077,6 +2078,212 @@ class ProductScanHistoryView(StandardResponseMixin, APIView):
             message="Scan history retrieved successfully",
             status_code=200
         )
+
+#====================================================================================================
+#cart related view
+# Add this view to mixapp/views.py
+
+class AddToCartView(StandardResponseMixin, APIView):
+    """Add product to shopping cart"""
+    permission_classes = [IsAuthenticated]
+    
+    @transaction.atomic
+    def post(self, request):
+        """
+        Add product to cart
+        
+        Request body:
+        - shop_product_id: Product ID
+        - quantity: Quantity to add
+        """
+        user = request.user
+        shop_product_id = request.data.get('shop_product_id')
+        quantity = request.data.get('quantity', 1)
+        
+        # Validate product
+        try:
+            shop_product = ShopProduct.objects.select_related('retailer').get(id=shop_product_id)
+        except ShopProduct.DoesNotExist:
+            return self.error_response("Product not found", status_code=404)
+        
+        # Check stock
+        if shop_product.quantity < quantity:
+            return self.error_response(
+                f"Insufficient stock. Available: {shop_product.quantity}",
+                status_code=400
+            )
+        
+        # Add to cart or update quantity
+        cart_item, created = ShoppingCart.objects.get_or_create(
+            user=user,
+            shop_product=shop_product,
+            defaults={'quantity': quantity}
+        )
+        
+        if not created:
+            cart_item.quantity += quantity
+            cart_item.save()
+        
+        return self.success_response(
+            data={
+                'cart_item_id': cart_item.id,
+                'product_name': shop_product.name,
+                'quantity': cart_item.quantity,
+                'unit_price': str(shop_product.market_price),
+                'total_price': str(cart_item.total_price)
+            },
+            message="Product added to cart",
+            status_code=201
+        )
+
+
+class ViewCartView(StandardResponseMixin, APIView):
+    """View shopping cart"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get cart items with total"""
+        user = request.user
+        
+        cart_items = ShoppingCart.objects.filter(user=user).select_related(
+            'shop_product__retailer'
+        )
+        
+        if not cart_items.exists():
+            return self.success_response(
+                data={
+                    'cart_items': [],
+                    'total_items': 0,
+                    'total_price': '0.00'
+                },
+                message="Cart is empty",
+                status_code=200
+            )
+        
+        # Prepare cart data
+        items_data = []
+        total_price = Decimal('0.00')
+        
+        for item in cart_items:
+            item_total = item.total_price
+            total_price += item_total
+            
+            items_data.append({
+                'cart_item_id': item.id,
+                'product_id': item.shop_product.id,
+                'product_name': item.shop_product.name,
+                'retailer_name': item.shop_product.retailer.business_name if item.shop_product.retailer else 'Unknown',
+                'quantity': item.quantity,
+                'unit_price': str(item.shop_product.market_price),
+                'total_price': str(item_total),
+                'image_url': request.build_absolute_uri(item.shop_product.image.url) if item.shop_product.image else None
+            })
+        
+        return self.success_response(
+            data={
+                'cart_items': items_data,
+                'total_items': cart_items.count(),
+                'total_price': str(total_price)
+            },
+            message="Cart retrieved successfully",
+            status_code=200
+        )
+
+
+class RemoveFromCartView(StandardResponseMixin, APIView):
+    """Remove product from cart"""
+    permission_classes = [IsAuthenticated]
+    
+    @transaction.atomic
+    def delete(self, request, cart_item_id):
+        """Remove cart item"""
+        user = request.user
+        
+        try:
+            cart_item = ShoppingCart.objects.get(id=cart_item_id, user=user)
+            product_name = cart_item.shop_product.name
+            cart_item.delete()
+            
+            return self.success_response(
+                message=f"{product_name} removed from cart",
+                status_code=200
+            )
+        except ShoppingCart.DoesNotExist:
+            return self.error_response("Cart item not found", status_code=404)
+
+
+class UpdateCartItemView(StandardResponseMixin, APIView):
+    """Update cart item quantity"""
+    permission_classes = [IsAuthenticated]
+    
+    @transaction.atomic
+    def patch(self, request, cart_item_id):
+        """Update quantity"""
+        user = request.user
+        quantity = request.data.get('quantity')
+        
+        if not quantity or quantity < 1:
+            return self.error_response("Quantity must be at least 1", status_code=400)
+        
+        try:
+            cart_item = ShoppingCart.objects.select_related('shop_product').get(
+                id=cart_item_id,
+                user=user
+            )
+            
+            # Check stock
+            if cart_item.shop_product.quantity < quantity:
+                return self.error_response(
+                    f"Insufficient stock. Available: {cart_item.shop_product.quantity}",
+                    status_code=400
+                )
+            
+            cart_item.quantity = quantity
+            cart_item.save()
+            
+            return self.success_response(
+                data={
+                    'cart_item_id': cart_item.id,
+                    'quantity': cart_item.quantity,
+                    'total_price': str(cart_item.total_price)
+                },
+                message="Cart updated",
+                status_code=200
+            )
+        except ShoppingCart.DoesNotExist:
+            return self.error_response("Cart item not found", status_code=404)
+
+
+
+#==========================================================
+from rest_framework import viewsets, permissions
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from .models import Expense
+from .serializers import ExpenseSerializer
+
+class ExpenseViewSet(viewsets.ModelViewSet):
+    serializer_class = ExpenseSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser] 
+
+    def get_queryset(self):
+        return Expense.objects.filter(user=self.request.user)
+    
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

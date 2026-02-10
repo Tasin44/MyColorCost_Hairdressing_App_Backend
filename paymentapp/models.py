@@ -16,7 +16,8 @@ class Payment(models.Model):
     )
     
     # Stripe data
-    payment_intent_id = models.CharField(max_length=255, unique=True)
+    payment_intent_id = models.CharField(max_length=255, unique=True,        null=True,        # ✅ ADD THIS
+    blank=True)       # ✅ ADD THIS)
     checkout_session_id = models.CharField(max_length=255, null=True, blank=True)
     
     # Amounts

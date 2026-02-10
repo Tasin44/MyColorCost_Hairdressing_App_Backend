@@ -1,6 +1,6 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework import status
 from django.db import transaction
@@ -21,8 +21,10 @@ from .serializers import (
 )
 import stripe
 from django.conf import settings
-
+from django.shortcuts import render, redirect
 stripe.api_key = settings.STRIPE_SECRET_KEY
+from django.views.decorators.csrf import csrf_exempt
+from django.shortcuts import render
 
 class StandardResponseMixin:
     """Mixin for consistent API responses"""
@@ -436,7 +438,7 @@ class DeliveryAddressListCreateView(StandardResponseMixin, APIView):
 #Stripe code for retailer 
 # Add to retailerapp/views.py
 
-
+from .utils import is_stripe_supported_country, is_stripe_onboarding_complete
 
 class RetailerStripeOnboardView(StandardResponseMixin, APIView):
     """Start Stripe Connect onboarding for retailer"""
@@ -445,84 +447,264 @@ class RetailerStripeOnboardView(StandardResponseMixin, APIView):
     def post(self, request):
         user = request.user
         
+        # if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+        #     return self.error_response("Unauthorized", status_code=403)
+
         if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
-            return self.error_response("Unauthorized", status_code=403)
-        
+            return render(request, 'retailer/stripe_error.html', {
+                'error': 'Unauthorized access'
+            })
         retailer = user.retailer_profile
         
+        # if retailer.stripe_connected:
+        #     return self.error_response("Already connected to Stripe", status_code=400)
+
+        # if retailer.stripe_connected:
+        #     return render(request, 'retailer/stripe_error.html', {
+        #         'error': 'Already connected to Stripe'
+        #     })
+
+        # ✅ Check if already connected
         if retailer.stripe_connected:
-            return self.error_response("Already connected to Stripe", status_code=400)
+            return self.success_response(
+                message="Stripe account onboarding already completed",
+                status_code=200
+            )
         
+        # ✅ Check if account exists and onboarding is complete
+        if retailer.stripe_account_id:
+            if is_stripe_onboarding_complete(retailer.stripe_account_id):
+                retailer.stripe_connected = True
+                retailer.stripe_connection_date = timezone.now()
+                retailer.save()
+                return self.success_response(
+                    message="Stripe account onboarding already completed",
+                    status_code=200
+                )
+            
+        # ✅ NEW: Get country from request
+        country = request.data.get('country', 'GB').upper()
+        
+        # ✅ NEW: Validate country support
+        if not is_stripe_supported_country(country):
+            return self.error_response(
+                f"{country} is not supported for Stripe Connect",
+                status_code=400
+            )
+        # try:
+        #     # Create Stripe Connect account if doesn't exist
+        #     if not retailer.stripe_account_id:
+        #         account = stripe.Account.create(
+        #             type='express',
+        #             country='GB',  # Change based on your country
+        #             email=user.email,
+        #             capabilities={
+        #                 'card_payments': {'requested': True},#Stripe requires card_payments capability when requesting transfers for GB accounts.Without this I was getting error:
+
+        #                     # message": "Request req_RlWRpEIEcVpzMu: When requesting the transfers capability for accounts in GB, you must either specify the recipient service agreement, or request the card_payments capability along with transfers. To specify the recipient service agreement, see https://stripe.com/docs/connect/service-agreement-types#choosing-type-with-api. For more information on cross-border transfers, see https://stripe.com/docs/connect/account-capabilities#transfers-cross-border.
+
+        #                 'transfers': {'requested': True}
+        #             }
+        #         )
+        #         retailer.stripe_account_id = account.id
+        #         retailer.save(update_fields=['stripe_account_id'])
+            
+        #     # Create onboarding link
+        #     account_link = stripe.AccountLink.create(
+        #         account=retailer.stripe_account_id,
+        #         type='account_onboarding',
+        #         # refresh_url=f"{settings.BASE_URL}/retailer/stripe/refresh",
+        #         # return_url=f"{settings.BASE_URL}/retailer/stripe/complete"
+        #         refresh_url=f"{settings.BASE_URL}/retailer/stripe/onboard/",
+        #         return_url=f"{settings.BASE_URL}/retailer/stripe/complete/?account_id={retailer.stripe_account_id}"
+        #     )
+        #     # ✅ REDIRECT to Stripe onboarding URL
+        #     return redirect(account_link.url)
+        #     # return self.success_response(
+        #     #     data={
+        #     #         'onboarding_url': account_link.url,
+        #     #         'account_id': retailer.stripe_account_id
+        #     #     },
+        #     #     message="Stripe onboarding started",
+        #     #     status_code=200
+        #     # )
+        
+        # # except stripe.error.StripeError as e:
+        # #     return self.error_response(str(e), status_code=500)
+        # except stripe.error.StripeError as e:
+        #     return render(request, 'retailer/stripe_error.html', {
+        #         'error': str(e)
+        #     })
         try:
-            # Create Stripe Connect account if doesn't exist
-            if not retailer.stripe_account_id:
+            # ✅ NEW: Reuse existing account if valid
+            if retailer.stripe_account_id:
+                try:
+                    account = stripe.Account.retrieve(retailer.stripe_account_id)
+                    account_id = retailer.stripe_account_id
+                except stripe.error.InvalidRequestError:
+                    # Account doesn't exist, create new one
+                    account = stripe.Account.create(
+                        type='express',
+                        country=country,
+                        email=user.email,
+                        capabilities={
+                            'card_payments': {'requested': True},
+                            'transfers': {'requested': True}
+                        }
+                    )
+                    retailer.stripe_account_id = account.id
+                    retailer.save(update_fields=['stripe_account_id'])
+                    account_id = account.id
+            else:
+                # Create new account
                 account = stripe.Account.create(
                     type='express',
-                    country='GB',  # Change based on your country
+                    country=country,
                     email=user.email,
                     capabilities={
+                        'card_payments': {'requested': True},
+                        #Stripe requires card_payments capability when requesting transfers for GB accounts.Without this I was getting error:
+
+        #                     # message": "Request req_RlWRpEIEcVpzMu: When requesting the transfers capability for accounts in GB, you must either specify the recipient service agreement, or request the card_payments capability along with transfers. To specify the recipient service agreement, see https://stripe.com/docs/connect/service-agreement-types#choosing-type-with-api. For more information on cross-border transfers, see https://stripe.com/docs/connect/account-capabilities#transfers-cross-border.
                         'transfers': {'requested': True}
                     }
                 )
                 retailer.stripe_account_id = account.id
                 retailer.save(update_fields=['stripe_account_id'])
+                account_id = account.id
             
-            # Create onboarding link
+            # ✅ IMPROVED: Better redirect URLs with status
             account_link = stripe.AccountLink.create(
-                account=retailer.stripe_account_id,
+                account=account_id,
                 type='account_onboarding',
-                refresh_url=f"{settings.BASE_URL}/retailer/stripe/refresh",
-                return_url=f"{settings.BASE_URL}/retailer/stripe/complete"
+                refresh_url=f"{settings.BASE_URL}/retailer/stripe/onboard-complete/?onboard=error&account_id={account_id}",
+                return_url=f"{settings.BASE_URL}/retailer/stripe/onboard-complete/?onboard=success&account_id={account_id}"
             )
             
-            return self.success_response(
-                data={
-                    'onboarding_url': account_link.url,
-                    'account_id': retailer.stripe_account_id
-                },
-                message="Stripe onboarding started",
-                status_code=200
-            )
+            return redirect(account_link.url)
         
         except stripe.error.StripeError as e:
-            return self.error_response(str(e), status_code=500)
+            return render(request, 'retailer/stripe_error.html', {
+                'error': str(e)
+            })
 
+# class RetailerStripeCompleteView(StandardResponseMixin, APIView):
+#     """Handle Stripe onboarding completion"""
+#     permission_classes = [IsAuthenticated]
+    
+#     def get(self, request):
+#         user = request.user
+#         retailer = user.retailer_profile
+        
+#         try:
+#             account = stripe.Account.retrieve(retailer.stripe_account_id)
+            
+#             if account.charges_enabled and account.details_submitted:
+#                 retailer.stripe_connected = True
+#                 retailer.stripe_connection_date = timezone.now()
+#                 retailer.save()
+                
+#                 return self.success_response(
+#                     message="Stripe account connected successfully",
+#                     status_code=200
+#                 )
+#             else:
+#                 return self.error_response(
+#                     "Stripe onboarding incomplete",
+#                     status_code=400
+#                 )
+        
+#         except stripe.error.StripeError as e:
+#             return self.error_response(str(e), status_code=500)
+
+# ...existing code...
 
 class RetailerStripeCompleteView(StandardResponseMixin, APIView):
-    """Handle Stripe onboarding completion"""
+    """Handle Stripe onboarding completion with status"""
+    permission_classes = [AllowAny]  # Changed to AllowAny for Stripe redirects
+    
+    def get(self, request):
+        account_id = request.GET.get('account_id')
+        onboard_status = request.GET.get('onboard')
+        
+        if not account_id:
+            return redirect(f"{settings.BASE_URL}/retailer/dashboard/?onboard=error")
+        
+        try:
+            from .models import RetailerProfile
+            retailer = RetailerProfile.objects.get(stripe_account_id=account_id)
+            
+            # ✅ Always verify—ignore URL params
+            if is_stripe_onboarding_complete(account_id):
+                if not retailer.stripe_connected:
+                    retailer.stripe_connected = True
+                    retailer.stripe_connection_date = timezone.now()
+                    retailer.save()
+                return redirect(f"{settings.BASE_URL}/retailer/dashboard/?onboard=success")
+            else:
+                # Incomplete onboarding
+                return redirect(f"{settings.BASE_URL}/retailer/dashboard/?onboard=incomplete&account_id={account_id}")
+        
+        except RetailerProfile.DoesNotExist:
+            return redirect(f"{settings.BASE_URL}/retailer/dashboard/?onboard=error")
+        except Exception as e:
+            return redirect(f"{settings.BASE_URL}/retailer/dashboard/?onboard=error")
+
+class RetailerStripeStatusView(StandardResponseMixin, APIView):
+    """Check retailer's Stripe connection status"""
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
         user = request.user
+        
+        if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+            return self.error_response("Unauthorized", status_code=403)
+        
         retailer = user.retailer_profile
         
+        return self.success_response(
+            data={
+                "stripe_connected": retailer.stripe_connected,
+                "stripe_connection_status": "connected" if retailer.stripe_connected else "not_connected",
+                "stripe_account_id": retailer.stripe_account_id,
+                "connection_date": retailer.stripe_connection_date
+            },
+            message="Stripe status retrieved",
+            status_code=200
+        )
+
+
+
+@csrf_exempt
+def retailer_dashboard_view(request):
+    """Render dashboard with Stripe onboarding status"""
+    account_id = request.GET.get("account_id")
+    
+    # Case 1: Stripe redirect -> use account_id
+    if account_id:
         try:
-            account = stripe.Account.retrieve(retailer.stripe_account_id)
-            
-            if account.charges_enabled and account.details_submitted:
-                retailer.stripe_connected = True
-                retailer.stripe_connection_date = timezone.now()
-                retailer.save()
-                
-                return self.success_response(
-                    message="Stripe account connected successfully",
-                    status_code=200
-                )
-            else:
-                return self.error_response(
-                    "Stripe onboarding incomplete",
-                    status_code=400
-                )
-        
-        except stripe.error.StripeError as e:
-            return self.error_response(str(e), status_code=500)
-
-
-
-
-
-
-
+            from .models import RetailerProfile
+            retailer = RetailerProfile.objects.get(stripe_account_id=account_id)
+        except RetailerProfile.DoesNotExist:
+            return render(request, "retailer/dashboard.html", {
+                "onboard_status": "error",
+                "account_id": None,
+            })
+    else:
+        # Case 2: Normal dashboard access -> use logged in user
+        if request.user.is_authenticated and hasattr(request.user, 'retailer_profile'):
+            retailer = request.user.retailer_profile
+        else:
+            retailer = None
+    
+    onboard_status = request.GET.get("onboard")
+    
+    context = {
+        "onboard_status": onboard_status,
+        "account_id": getattr(retailer, "stripe_account_id", None),
+        "stripe_connected": getattr(retailer, "stripe_connected", False),
+    }
+    return render(request, 'retailer/dashboard.html', context)
 
 
 

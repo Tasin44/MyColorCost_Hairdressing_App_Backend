@@ -19,7 +19,9 @@ from .views import (
     
     # Barcode & Manual Entry
     ScanBarcodeView, ManualProductEntryView,
-    UpdateScannedProductView,ProductScanHistoryView
+    UpdateScannedProductView,ProductScanHistoryView,
+    AddToCartView, ViewCartView, RemoveFromCartView, UpdateCartItemView,
+    ExpenseViewSet
 )
  
 app_name = 'mixapp'
@@ -27,7 +29,8 @@ app_name = 'mixapp'
 # Create router and register viewsets
 router = DefaultRouter()
 router.register(r'mixes', MixViewSet, basename='mix')
- 
+router.register(r'expenses', ExpenseViewSet, basename='expense')  # ✅ ADD THIS
+
 urlpatterns = [
     # Shop Products (Master Catalog)
     path('shop-products/', ShopProductListView.as_view(), name='shop-product-list'),
@@ -62,6 +65,15 @@ urlpatterns = [
     path('manual-product-entry/', ManualProductEntryView.as_view(), name='manual-product-entry'),
     path('update-scanned-product/<int:product_id>/', UpdateScannedProductView.as_view(), name='update-scanned-product'),  
     path('scan-history/', ProductScanHistoryView.as_view(), name='scan-history'),  # ✅ ADD THIS
+
+
+
+        # Cart APIs
+    path('cart/add/', AddToCartView.as_view(), name='add-to-cart'),
+    path('cart/', ViewCartView.as_view(), name='view-cart'),
+    path('cart/<int:cart_item_id>/', RemoveFromCartView.as_view(), name='remove-from-cart'),
+    path('cart/<int:cart_item_id>/update/', UpdateCartItemView.as_view(), name='update-cart'),
+
 ]
 
 

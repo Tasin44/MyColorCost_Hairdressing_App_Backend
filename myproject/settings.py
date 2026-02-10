@@ -68,7 +68,8 @@ ROOT_URLCONF = 'myproject.urls'
 TEMPLATES: List[Dict[str, Any]]  = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # 'DIRS': [],
+        'DIRS': [BASE_DIR / 'retailerapp' / 'templates'],  # ✅ ADD THIS
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -250,8 +251,10 @@ STRIPE_SECRET_KEY = "sk_test_51SJRZxHPckdqCiP923JxGvV19Hjo8PBdG9CLbIvpOKYMrozDGo
 STRIPE_PUBLIC_KEY = "pk_test_51SJRZxHPckdqCiP90dDxnY7aqJLHWMRbX6hOxHVWnPmnmMzGljcXl5BF3CWwdsQDedCpC6odOm5OuEw9zYJ8m6El00l7mKiOUW" 
 
 stripe.api_key = STRIPE_SECRET_KEY
-# STRIPE_WEBHOOK_SECRET = 'whsec_tk2uDcteoL1zhBnkK0BrJVZd3MwZqiY8' # I got it from stripe dashboard, which is smaller
-STRIPE_WEBHOOK_SECRET='whsec_2c58f3e29a2cdff7d358ddc74ad7bfed19a8e641632368dce5abe060756b8480'
+
+STRIPE_WEBHOOK_SECRET='whsec_vMDymKpbvdeU5BWuD0EVY9ZK8GK98YAq' # I got it from stripe dashboard, which is smaller
+
+STRIPE_PLATFORM_FEE_PERCENT = 5
 
 # BASE_URL = "https://6zpmb4x8-8015.inc1.devtunnels.ms"
 

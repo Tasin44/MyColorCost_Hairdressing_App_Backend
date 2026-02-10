@@ -8,7 +8,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db import transaction
 from decimal import Decimal
-from mixapp.models import ShoppingCart
+from mixapp.models import ShoppingCart, ShopProduct
+from paymentapp.models import Payment, PaymentRetailerSplit
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 from django.views.decorators.csrf import csrf_exempt
@@ -28,27 +29,252 @@ class StandardResponseMixin:
         return Response(response, status=status_code)
 
 
+# class CreateCheckoutSessionView(StandardResponseMixin, APIView):
+#     """Create Stripe checkout session for cart"""
+#     permission_classes = [IsAuthenticated]
+    
+#     @transaction.atomic
+#     def post(self, request):
+#         user = request.user
+#         delivery_address_id = request.data.get('delivery_address_id')
+        
+#         # Get cart items
+#         cart_items = ShoppingCart.objects.filter(user=user).select_related(
+#             'shop_product__retailer'
+#         )
+        
+#         if not cart_items.exists():
+#             return self.error_response("Cart is empty", status_code=400)
+        
+#         # Group by retailer
+#         retailer_data = {}
+#         total_amount = Decimal('0.00')
+        
+#         for item in cart_items:
+#             retailer = item.shop_product.retailer
+            
+#             if not retailer or not retailer.stripe_connected:
+#                 return self.error_response(
+#                     f"Retailer for {item.shop_product.name} not connected to Stripe",
+#                     status_code=400
+#                 )
+            
+#             if retailer.id not in retailer_data:
+#                 retailer_data[retailer.id] = {
+#                     'retailer': retailer,
+#                     'products': [],
+#                     'product_total': Decimal('0.00'),
+#                     'delivery_charge': retailer.delivery_charge
+#                 }
+            
+#             product_total = item.shop_product.market_price * item.quantity
+#             retailer_data[retailer.id]['products'].append({
+#                 'name': item.shop_product.name,
+#                 'quantity': item.quantity,
+#                 'price': item.shop_product.market_price,
+#                 'total': product_total
+#             })
+#             retailer_data[retailer.id]['product_total'] += product_total
+#             total_amount += product_total
+        
+#         # Calculate delivery
+#         total_delivery = sum(r['delivery_charge'] for r in retailer_data.values())
+        
+#         # Distribute delivery if > £5
+#         if total_delivery > Decimal('5.00'):
+#             for retailer_id, data in retailer_data.items():
+#                 proportion = data['product_total'] / total_amount
+#                 data['delivery_share'] = (total_delivery * proportion).quantize(Decimal('0.01'))
+#         else:
+#             for data in retailer_data.values():
+#                 data['delivery_share'] = data['delivery_charge']
+        
+#         final_total = total_amount + total_delivery
+#         platform_fee = (final_total * Decimal(str(settings.STRIPE_PLATFORM_FEE_PERCENT)) / Decimal('100')).quantize(Decimal('0.01'))
+        
+#         # Create Payment record
+#         from paymentapp.models import Payment
+#         payment = Payment.objects.create(
+#             user=user,
+#             total_amount=final_total,
+#             platform_fee=platform_fee,
+#             delivery_charge=total_delivery,
+#             status='pending'
+#         )
+        
+#         # Create Stripe checkout session
+#         try:
+#             line_items = []
+#             for data in retailer_data.values():
+#                 for product in data['products']:
+#                     line_items.append({
+#                         'price_data': {
+#                             'currency': 'gbp',
+#                             'product_data': {
+#                                 'name': product['name']
+#                             },
+#                             'unit_amount': int(product['price'] * 100)
+#                         },
+#                         'quantity': product['quantity']
+#                     })
+            
+#             # Add delivery as line item
+#             line_items.append({
+#                 'price_data': {
+#                     'currency': 'gbp',
+#                     'product_data': {'name': 'Delivery Charge'},
+#                     'unit_amount': int(total_delivery * 100)
+#                 },
+#                 'quantity': 1
+#             })
+            
+#             session = stripe.checkout.Session.create(
+#                 payment_method_types=['card'],
+#                 line_items=line_items,
+#                 mode='payment',
+#                 success_url=f"{settings.BASE_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
+#                 cancel_url=f"{settings.BASE_URL}/payment/cancel",
+#                 metadata={
+#                     'payment_id': payment.id,
+#                     'user_id': user.id
+#                 },
+#                 payment_intent_data={
+#                     'application_fee_amount': int(platform_fee * 100)
+#                 }
+#             )
+            
+#             payment.checkout_session_id = session.id
+#             payment.save()
+            
+#             return self.success_response(
+#                 data={
+#                     'checkout_url': session.url,
+#                     'session_id': session.id,
+#                     'payment_id': payment.id
+#                 },
+#                 message="Checkout session created",
+#                 status_code=200
+#             )
+        
+#         except stripe.error.StripeError as e:
+#             payment.status = 'failed'
+#             payment.save()
+#             return self.error_response(str(e), status_code=500)
+
+
+
+# REPLACE CreateCheckoutSessionView with this
+
 class CreateCheckoutSessionView(StandardResponseMixin, APIView):
-    """Create Stripe checkout session for cart"""
+    """Create delivery address and checkout session in one request"""
     permission_classes = [IsAuthenticated]
     
     @transaction.atomic
     def post(self, request):
-        user = request.user
-        delivery_address_id = request.data.get('delivery_address_id')
+        """
+        Combined: Create address + checkout
         
-        # Get cart items
+        Request body:
+        - address_label: "Home" / "Office" / "Salon"
+        - full_address: Full address text
+        - area: Area name
+        - postal_code: Postal code
+        - phone_number: Phone number
+        - is_default: true/false (optional)
+        """
+        user = request.user
+
+        # ✅ Step 1: Validate products from request
+        products_data = request.data.get('products', [])
+        if not products_data:
+            return self.error_response("Products list is required", status_code=400)
+        
+        # Step 1: Create/Get delivery address
+        from retailerapp.models import CustomerDeliveryAddress
+        from retailerapp.serializers import CustomerDeliveryAddressSerializer
+        
+        address_data = {
+            'address_label': request.data.get('address_label'),
+            'full_address': request.data.get('full_address'),
+            'area': request.data.get('area'),
+            'postal_code': request.data.get('postal_code'),
+            'phone_number': request.data.get('phone_number'),
+            'is_default': request.data.get('is_default', False)
+        }
+        
+        # Validate address
+        address_serializer = CustomerDeliveryAddressSerializer(
+            data=address_data,
+            context={'request': request}
+        )
+        
+        if not address_serializer.is_valid():
+            return self.error_response(
+                "Invalid address data",
+                status_code=400,
+                data=address_serializer.errors
+            )
+        
+        # Create address
+        delivery_address = address_serializer.save()
+        
+        '''
+        # Step 2: Get cart items
         cart_items = ShoppingCart.objects.filter(user=user).select_related(
             'shop_product__retailer'
         )
         
         if not cart_items.exists():
+            delivery_address.delete()  # Rollback address
             return self.error_response("Cart is empty", status_code=400)
         
-        # Group by retailer
+        '''
+        # ✅ Step 3: Fetch products and validate
+        product_ids = [p['shop_product_id'] for p in products_data]
+        products = ShopProduct.objects.filter(
+            id__in=product_ids
+        ).select_related('retailer')
+        
+        if products.count() != len(product_ids):
+            delivery_address.delete()
+            return self.error_response("Some products not found", status_code=400)
+        
+        # ✅ Step 4: Build product map with quantities
+        product_quantity_map = {p['shop_product_id']: p['quantity'] for p in products_data}
+
+        # ✅ NEW: Validate stock availability BEFORE processing
+        for product in products:
+            requested_quantity = product_quantity_map.get(product.id, 0)
+            
+            if requested_quantity == 0:
+                delivery_address.delete()
+                return self.error_response(
+                    f"Quantity not found for product {product.name}",
+                    status_code=400
+                )
+            
+            # ✅ Check if enough stock available
+            if product.quantity < requested_quantity:
+                delivery_address.delete()
+                return self.error_response(
+                    f"Insufficient stock for {product.name}. Available: {product.quantity}, Requested: {requested_quantity}",
+                    status_code=400
+                )
+            
+            # ✅ Check if product is out of stock
+            if product.stock_status == 'out_of_stock' or product.quantity <= 0:
+                delivery_address.delete()
+                return self.error_response(
+                    f"Product {product.name} is out of stock",
+                    status_code=400
+                )
+            
+        # Step 3: Group by retailer and calculate totals
         retailer_data = {}
         total_amount = Decimal('0.00')
-        
+        response_products = []  # ✅ NEW: Store for response
+
+        '''
         for item in cart_items:
             retailer = item.shop_product.retailer
             
@@ -67,19 +293,59 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
                 }
             
             product_total = item.shop_product.market_price * item.quantity
+        '''
+        for product in products:
+            retailer = product.retailer
+            #quantity = product_quantity_map[product.id]
+            quantity = product_quantity_map.get(product.id, 0)
+            if quantity == 0:
+                delivery_address.delete()
+                return self.error_response(
+                    f"Quantity not found for product {product.name}",
+                    status_code=400
+                )
+            if not retailer or not retailer.stripe_connected:
+                delivery_address.delete()
+                return self.error_response(
+                    f"Retailer for {product.name} not connected to Stripe",
+                    status_code=400
+                )
+            
+            if retailer.id not in retailer_data:
+                retailer_data[retailer.id] = {
+                    'retailer': retailer,
+                    'products': [],
+                    'product_total': Decimal('0.00'),
+                    'delivery_charge': retailer.delivery_charge
+                }
+            
+            product_total = product.market_price * quantity
+
+            # retailer_data[retailer.id]['products'].append({
+            #     'name': item.shop_product.name,
+            #     'quantity': item.quantity,
+            #     'price': item.shop_product.market_price,
+            #     'total': product_total
+            # })
             retailer_data[retailer.id]['products'].append({
-                'name': item.shop_product.name,
-                'quantity': item.quantity,
-                'price': item.shop_product.market_price,
-                'total': product_total
+            'name': product.name,
+            'quantity': quantity,
+            'price': product.market_price,
+            'total': product_total
             })
             retailer_data[retailer.id]['product_total'] += product_total
             total_amount += product_total
-        
-        # Calculate delivery
+            # ✅ NEW: Add to response list
+            response_products.append({
+                'id': product.id,
+                'name': product.name,
+                'quantity': quantity,
+                'price': str(product.market_price),
+                'subtotal': str(product_total)
+            })
+        # Step 4: Calculate delivery charges
         total_delivery = sum(r['delivery_charge'] for r in retailer_data.values())
         
-        # Distribute delivery if > £5
         if total_delivery > Decimal('5.00'):
             for retailer_id, data in retailer_data.items():
                 proportion = data['product_total'] / total_amount
@@ -91,17 +357,19 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
         final_total = total_amount + total_delivery
         platform_fee = (final_total * Decimal(str(settings.STRIPE_PLATFORM_FEE_PERCENT)) / Decimal('100')).quantize(Decimal('0.01'))
         
-        # Create Payment record
+        # Step 5: Create Payment record
         from paymentapp.models import Payment
         payment = Payment.objects.create(
             user=user,
             total_amount=final_total,
             platform_fee=platform_fee,
             delivery_charge=total_delivery,
+            delivery_address=delivery_address,
             status='pending'
+            # ✅ payment_intent_id is NULL/blank initially
         )
         
-        # Create Stripe checkout session
+        # Step 6: Create Stripe checkout session
         try:
             line_items = []
             for data in retailer_data.values():
@@ -135,21 +403,79 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
                 cancel_url=f"{settings.BASE_URL}/payment/cancel",
                 metadata={
                     'payment_id': payment.id,
-                    'user_id': user.id
+                    'user_id': user.id,
+                    'product_ids': ','.join(map(str, product_ids))  # ✅ NEW: Store product IDs
                 },
-                payment_intent_data={
-                    'application_fee_amount': int(platform_fee * 100)
-                }
+                # ❌ REMOVE THIS - Checkout Session doesn't support application_fee_amount
+                # payment_intent_data={
+                #     'application_fee_amount': int(platform_fee * 100)
+                # }
             )
-            
+            '''
+            ❌ ❌ ❌ Error I faced: ❌ ❌ ❌ 
+            UNIQUE constraint failed: payments.payment_intent_id
+            Request Method: POST
+            Request URL: http://10.10.12.14:8000/payment/create-checkout/
+            Django Version: 6.0.1
+            Exception Type: IntegrityError
+            Exception Value:
+            UNIQUE constraint failed: payments.payment_intent_id
+
+            Ans: 
+
+            Why This Happens
+                Stripe Checkout Session Flow:
+                You create checkout session → No payment_intent exists yet
+                User pays → Stripe creates payment_intent internally
+                Webhook fires → Stripe sends payment_intent_id in webhook data
+                You save it → Update Payment record with actual payment_intent_id
+
+            Your Original Code:
+                Created Payment with NULL payment_intent_id
+                SQLite sees empty string as a value (not NULL)
+                Second payment tries to save with empty string → UNIQUE constraint error
+
+
+            '''
+            # ✅ Save session ID (payment_intent_id is still NULL)
             payment.checkout_session_id = session.id
             payment.save()
+
+            # ✅ DEV ONLY: Decrease quantities immediately
+            # Remove this code when you deploy to production! (Webhooks will work then)
+            from django.db.models import F
+            for product_id, quantity in product_quantity_map.items():
+                ShopProduct.objects.filter(id=product_id).update(
+                    quantity=F('quantity') - quantity
+                )
+
+            # Refresh and update stock status
+            products_to_update = ShopProduct.objects.filter(id__in=product_quantity_map.keys())
+            for product in products_to_update:
+                if product.quantity <= 0:
+                    product.stock_status = 'out_of_stock'
+                elif product.quantity <= 10:
+                    product.stock_status = 'low_stock'
+                else:
+                    product.stock_status = 'in_stock'
+                product.save(update_fields=['stock_status'])
             
             return self.success_response(
                 data={
                     'checkout_url': session.url,
                     'session_id': session.id,
-                    'payment_id': payment.id
+                    'payment_id': payment.id,
+                    'products': response_products,  # ✅ NEW
+                    'delivery_address': {
+                        'id': delivery_address.id,
+                        'address_label': delivery_address.address_label,
+                        'full_address': delivery_address.full_address
+                    },
+                    'summary': {
+                        'subtotal': str(total_amount),
+                        'delivery_charge': str(total_delivery),
+                        'total': str(final_total)
+                    }
                 },
                 message="Checkout session created",
                 status_code=200
@@ -159,7 +485,6 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
             payment.status = 'failed'
             payment.save()
             return self.error_response(str(e), status_code=500)
-
 # Add to paymentapp/views.py
 
 
@@ -186,18 +511,17 @@ def stripe_webhook(request):
     
     return HttpResponse(status=200)
 
-
+'''
 @transaction.atomic
 def handle_successful_payment(session):
-    """Process successful payment and split to retailers"""
-    from paymentapp.models import Payment, PaymentRetailerSplit
-    
     payment_id = session['metadata']['payment_id']
     payment = Payment.objects.get(id=payment_id)
     
+    # ✅ NOW set payment_intent_id (from Stripe's response)
     payment.payment_intent_id = session['payment_intent']
     payment.status = 'completed'
-    payment.save()
+    #payment.save()
+    payment.save(update_fields=['payment_intent_id', 'status'])
     
     # Get cart items grouped by retailer
     cart_items = ShoppingCart.objects.filter(user=payment.user).select_related(
@@ -243,12 +567,186 @@ def handle_successful_payment(session):
         transfer_amount = subtotal - platform_fee_share
         
         try:
-            # Create Stripe transfer
+            ## ✅ Create Stripe Transfer (NOT in checkout, in webhook)
             transfer = stripe.Transfer.create(
                 amount=int(transfer_amount * 100),
                 currency='gbp',
                 destination=retailer.stripe_account_id,
-                transfer_group=payment.payment_intent_id
+                transfer_group=payment.payment_intent_id,
+                metadata={
+                    'payment_id': payment.id,
+                    'retailer_id': retailer.id
+                }
+            )
+            PaymentRetailerSplit.objects.create(
+                payment=payment,
+                retailer=retailer,
+                product_amount=product_amount,
+                delivery_share=delivery_share,
+                platform_fee_share=platform_fee_share,
+                total_transfer_amount=transfer_amount,
+                transfer_id=transfer.id,
+                transfer_status='completed'
+            )
+        
+        except stripe.error.StripeError as e:
+            # Log error but continue with other transfers
+            PaymentRetailerSplit.objects.create(
+                payment=payment,
+                retailer=retailer,
+                product_amount=product_amount,
+                delivery_share=delivery_share,
+                platform_fee_share=platform_fee_share,
+                total_transfer_amount=transfer_amount,
+                transfer_status='failed'
+            )
+    
+    # Clear cart
+    cart_items.delete()
+
+'''
+
+
+@transaction.atomic
+def handle_successful_payment(session):
+    """Process successful payment and split to retailers"""
+    
+    payment_id = session['metadata']['payment_id']
+    product_ids = session['metadata'].get('product_ids', '').split(',')
+    payment = Payment.objects.get(id=payment_id)
+    
+    # ✅ NOW set payment_intent_id (from Stripe's response)
+    payment.payment_intent_id = session['payment_intent']
+    payment.status = 'completed'
+    #payment.save()
+    payment.save(update_fields=['payment_intent_id', 'status'])
+    
+    
+    #==================================
+        # ✅ Fetch products (replace cart query)
+    from mixapp.models import ShopProduct
+    from django.db.models import F
+    products = ShopProduct.objects.filter(
+        id__in=[int(pid) for pid in product_ids if pid]
+    ).select_related('retailer')
+    
+    # ✅ Get quantities from line items
+    line_items = stripe.checkout.Session.list_line_items(session['id'])
+    quantity_map = {}
+    for item in line_items.data:
+        if 'Delivery' not in item.description:
+            # Match by price to get product
+            for product in products:
+                if int(product.market_price * 100) == item.price.unit_amount:
+                    quantity_map[product.id] = item.quantity
+                    break
+    
+    #================================================\
+    # ✅ NEW: Decrease product quantities
+    for product in products:
+        quantity_sold = quantity_map.get(product.id, 0)
+        if quantity_sold > 0:
+            # Update quantity atomically (prevents race conditions)
+            ShopProduct.objects.filter(id=product.id).update(
+                quantity=F('quantity') - quantity_sold
+            )
+            
+            ## ✅ CRITICAL: Refresh from DB to get updated quantity
+    #product.refresh_from_db()
+    # ✅ NEW: Refresh ALL products from DB after quantity updates
+    products = ShopProduct.objects.filter(
+        id__in=[int(pid) for pid in product_ids if pid]
+    ).select_related('retailer')
+
+    # ✅ NOW loop through FRESH products and update stock_status
+    for product in products:
+        if product.quantity <= 0:
+            product.stock_status = 'out_of_stock'
+        elif product.quantity <= 10:
+            product.stock_status = 'low_stock'
+        else:
+            product.stock_status = 'in_stock'
+        
+        product.save(update_fields=['stock_status'])
+
+    #================================================/
+    # ✅ Rest of the logic remains same (retailer splits)
+    retailer_totals = {}
+    total_amount = Decimal('0.00')
+    
+    for product in products:
+        retailer = product.retailer
+        quantity = quantity_map.get(product.id, 1)
+        product_total = product.market_price * quantity
+        
+        if retailer.id not in retailer_totals:
+            retailer_totals[retailer.id] = {
+                'retailer': retailer,
+                'product_amount': Decimal('0.00'),
+                'delivery_charge': retailer.delivery_charge
+            }
+        
+        retailer_totals[retailer.id]['product_amount'] += product_total
+        total_amount += product_total
+    
+    
+    
+    #=====================================
+    # Get cart items grouped by retailer
+    '''
+    cart_items = ShoppingCart.objects.filter(user=payment.user).select_related(
+        'shop_product__retailer'
+    )
+    
+    retailer_totals = {}
+    total_amount = Decimal('0.00')
+    
+    for item in cart_items:
+        retailer = item.shop_product.retailer
+        product_total = item.shop_product.market_price * item.quantity
+        
+        if retailer.id not in retailer_totals:
+            retailer_totals[retailer.id] = {
+                'retailer': retailer,
+                'product_amount': Decimal('0.00'),
+                'delivery_charge': retailer.delivery_charge
+            }
+        
+        retailer_totals[retailer.id]['product_amount'] += product_total
+        total_amount += product_total
+    '''
+    # Distribute delivery
+    total_delivery = sum(r['delivery_charge'] for r in retailer_totals.values())
+    if total_delivery > Decimal('5.00'):
+        for data in retailer_totals.values():
+            proportion = data['product_amount'] / total_amount
+            data['delivery_share'] = (total_delivery * proportion).quantize(Decimal('0.01'))
+    else:
+        for data in retailer_totals.values():
+            data['delivery_share'] = data['delivery_charge']
+    
+    # Transfer to each retailer
+    for data in retailer_totals.values():
+        retailer = data['retailer']
+        product_amount = data['product_amount']
+        delivery_share = data['delivery_share']
+        subtotal = product_amount + delivery_share
+        
+        # Calculate platform fee on this retailer's portion
+        platform_fee_share = (subtotal * Decimal(str(settings.STRIPE_PLATFORM_FEE_PERCENT)) / Decimal('100')).quantize(Decimal('0.01'))
+        transfer_amount = subtotal - platform_fee_share
+        
+        try:
+            ## ✅ Create Stripe Transfer (NOT in checkout, in webhook)
+            transfer = stripe.Transfer.create(
+                amount=int(transfer_amount * 100),
+                currency='gbp',
+                destination=retailer.stripe_account_id,
+                transfer_group=payment.payment_intent_id,
+                metadata={
+                    'payment_id': payment.id,
+                    'retailer_id': retailer.id
+                }
             )
             
             # Record split
@@ -276,10 +774,51 @@ def handle_successful_payment(session):
             )
     
     # Clear cart
-    cart_items.delete()
+    # cart_items.delete()
+
+# Add these imports at top
+from django.shortcuts import render
+from django.views.decorators.csrf import csrf_exempt
+
+# Add these views
+
+def payment_success_view(request):
+    """Render success page after payment"""
+    session_id = request.GET.get('session_id')
+    
+    if not session_id:
+        return render(request, 'paymentapp/cancel.html')
+    
+    try:
+        # Retrieve session from Stripe
+        session = stripe.checkout.Session.retrieve(session_id)
+        
+        # Get payment record
+        payment_id = session['metadata'].get('payment_id')
+        payment = Payment.objects.get(id=payment_id)
+        
+        # Get card details (if available)
+        card_last4 = '****'
+        if session.get('payment_method_details'):
+            card_last4 = session['payment_method_details'].get('card', {}).get('last4', '****')
+        
+        context = {
+            'session_id': session_id,
+            'payment_id': payment.id,
+            'total_amount': payment.total_amount,
+            'card_last4': card_last4,
+            'status': payment.status
+        }
+        
+        return render(request, 'paymentapp/success.html', context)
+    
+    except (stripe.error.StripeError, Payment.DoesNotExist):
+        return render(request, 'paymentapp/cancel.html')
 
 
-
+def payment_cancel_view(request):
+    """Render cancel page when payment is cancelled"""
+    return render(request, 'paymentapp/cancel.html')
 
 
 

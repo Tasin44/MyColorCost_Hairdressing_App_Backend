@@ -673,7 +673,34 @@ class MixProduct(models.Model):
 
 
 
+#=================================================================
+#Expense 
+from django.db import models
 
+
+class Expense(models.Model):
+    FREQUENCY_CHOICES = [
+        ('daily', 'Daily'),
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly'),
+        ('yearly', 'Yearly'),
+    ]
+    
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='expenses')
+    expense_name = models.CharField(max_length=255)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    category = models.CharField(max_length=100, null=True, blank=True)
+    frequency = models.CharField(max_length=20, choices=FREQUENCY_CHOICES, default='monthly', null=True, blank=True)
+    description = models.TextField(null=True, blank=True)
+    image = models.ImageField(upload_to='expenses/', null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return self.expense_name
 
 
 
