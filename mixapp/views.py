@@ -2276,9 +2276,103 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
 
 
+#======================================================
+
+class RetailerProductsListView(StandardResponseMixin, APIView):
+    """
+    GET: All products uploaded by retailers (for purchasing)
+    Available to all authenticated users
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get all retailer products (shop products)"""
+        
+        # ✅ Filter: Only show products from approved retailers with Stripe connected
+        queryset = ShopProduct.objects.filter(
+            retailer__isnull=False,
+            retailer__is_approved=True,
+            retailer__stripe_connected=True
+        ).select_related('retailer').order_by('-created_at')
+        
+        # ✅ Filter by stock status
+        stock_status = request.query_params.get('stock_status')
+        if stock_status in ['in_stock', 'out_of_stock', 'low_stock']:
+            queryset = queryset.filter(stock_status=stock_status)
+        
+        # ✅ Search by name
+        search = request.query_params.get('search', '').strip()
+        if search:
+            queryset = queryset.filter(name__icontains=search)
+        
+        # ✅ Filter by retailer
+        retailer_id = request.query_params.get('retailer_id')
+        if retailer_id:
+            queryset = queryset.filter(retailer_id=retailer_id)
+        
+        serializer = ShopProductListSerializer(
+            queryset,
+            many=True,
+            context={'request': request}
+        )
+        
+        return self.success_response(
+            data={
+                'products': serializer.data,
+                'total_count': queryset.count()
+            },
+            message="Retailer products retrieved",
+            status_code=200
+        )
 
 
-
+class UserInventoryProductsView(StandardResponseMixin, APIView):
+    """
+    GET: User's own inventory (scanned + manual entry products)
+    Shows UserProduct records for this user
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get user's inventory products"""
+        user = request.user
+        
+        # ✅ Get correct owner
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            owner = user.staff_profile.main_user
+        else:
+            owner = user
+        
+        # ✅ Get user products
+        queryset = UserProduct.objects.filter(
+            user=owner
+        ).select_related('product').order_by('-scanned_at')
+        
+        # ✅ Filter by availability
+        is_available = request.query_params.get('is_available')
+        if is_available is not None:
+            queryset = queryset.filter(is_available=is_available.lower() == 'true')
+        
+        # ✅ Search by product name
+        search = request.query_params.get('search', '').strip()
+        if search:
+            queryset = queryset.filter(product__name__icontains=search)
+        
+        serializer = UserProductSerializer(
+            queryset,
+            many=True,
+            context={'request': request}
+        )
+        
+        return self.success_response(
+            data={
+                'products': serializer.data,
+                'total_count': queryset.count(),
+                'available_count': queryset.filter(is_available=True).count()
+            },
+            message="User inventory retrieved",
+            status_code=200
+        )
 
 
 

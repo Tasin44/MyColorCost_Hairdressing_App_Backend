@@ -1,0 +1,367 @@
+from django.db import transaction
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from decimal import Decimal
+from django.contrib.auth import get_user_model
+from django.utils import timezone
+
+User = get_user_model()
+
+from .models import ReferralCode, Referral, CommissionWithdrawal, Subscription
+from .serializers import (
+    ReferralStatsSerializer,
+    CommissionWithdrawalSerializer,
+    SubscriptionSerializer
+)
+
+
+# Create your views here.
+
+class StandardResponseMixin:
+    """Mixin for consistent API responses"""
+    
+    def success_response(self, data=None, message="Success", status_code=200):
+        return Response({
+            "success": True,
+            "statusCode": status_code,
+            "message": message,
+            "data": data
+        }, status=status_code)
+    
+    def error_response(self, message, status_code=400, data=None):
+        return Response({
+            "success": False,
+            "statusCode": status_code,
+            "message": message,
+            "data": data
+        }, status=status_code)
+
+class ReferralDashboardView(StandardResponseMixin, APIView):
+    """Get user's referral statistics and earnings"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        user = request.user
+        
+        # Get referral code
+        try:
+            referral_code = user.referral_code.code
+        except ReferralCode.DoesNotExist:
+            # Generate if missing
+            import secrets
+            import string
+            code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+            while ReferralCode.objects.filter(code=code).exists():
+                code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+            ReferralCode.objects.create(user=user, code=code)
+            referral_code = code
+        
+        # Stats
+        referrals = Referral.objects.filter(referrer=user)
+        total_referrals = referrals.count()
+        active_referrals = referrals.filter(status='active').count()
+        
+        pending_withdrawals = CommissionWithdrawal.objects.filter(
+            user=user,
+            status__in=['pending', 'approved', 'processing']
+        ).count()
+        
+        stats = {
+            'referral_code': referral_code,
+            'total_referrals': total_referrals,
+            'active_referrals': active_referrals,
+            'total_commission_earned': str(user.total_commission_earned),
+            'available_commission': str(user.available_commission),
+            'pending_withdrawals': pending_withdrawals
+        }
+        
+        serializer = ReferralStatsSerializer(data=stats)
+        serializer.is_valid()
+        
+        return self.success_response(
+            data=serializer.data,
+            message="Referral statistics retrieved"
+        )
+
+
+class WithdrawalRequestView(StandardResponseMixin, APIView):
+    """Request commission withdrawal"""
+    permission_classes = [IsAuthenticated]
+    
+    @transaction.atomic
+    def post(self, request):
+        serializer = CommissionWithdrawalSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            user = request.user
+            amount = serializer.validated_data['amount']
+            
+            # Deduct from available balance
+            user.available_commission -= amount
+            user.save(update_fields=['available_commission'])
+            
+            # Create withdrawal request
+            withdrawal = serializer.save(user=user)
+            
+            return self.success_response(
+                data=CommissionWithdrawalSerializer(withdrawal).data,
+                message="Withdrawal request submitted successfully",
+                status_code=201
+            )
+        
+        return self.error_response(
+            "Invalid withdrawal request",
+            status_code=400,
+            data=serializer.errors
+        )
+    
+    def get(self, request):
+        """Get user's withdrawal history"""
+        withdrawals = CommissionWithdrawal.objects.filter(
+            user=request.user
+        ).order_by('-created_at')
+        
+        serializer = CommissionWithdrawalSerializer(withdrawals, many=True)
+        
+        return self.success_response(
+            data=serializer.data,
+            message="Withdrawal history retrieved"
+        )
+
+
+class SubscriptionStatusView(StandardResponseMixin, APIView):
+    """Check user's subscription status"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        user = request.user
+        
+        try:
+            subscription = user.subscription
+            serializer = SubscriptionSerializer(subscription)
+            
+            return self.success_response(
+                data=serializer.data,
+                message="Subscription status retrieved"
+            )
+        except Subscription.DoesNotExist:
+            return self.success_response(
+                data={
+                    'status': 'none',
+                    'has_active_subscription': False,
+                    'message': 'No active subscription'
+                },
+                message="No subscription found"
+            )
+
+
+
+#========================================================
+#Revenue cat webhook handler 
+
+from django.views.decorators.csrf import csrf_exempt
+from django.http import HttpResponse
+import json
+from decimal import Decimal
+from django.contrib.auth import get_user_model
+
+@csrf_exempt
+def revenuecat_webhook(request):
+    """
+    Handle RevenueCat webhook events
+    Docs: https://www.revenuecat.com/docs/webhooks
+    """
+    if request.method != 'POST':
+        return HttpResponse(status=405)
+    
+    try:
+        payload = json.loads(request.body)
+        event_type = payload.get('event', {}).get('type')
+        
+        # Extract user data
+        app_user_id = payload.get('event', {}).get('app_user_id')
+        product_id = payload.get('event', {}).get('product_id')
+        price_in_purchased_currency = payload.get('event', {}).get('price_in_purchased_currency', 0)
+        
+        # Google Play takes 15% for first $1M, then 30%
+        google_fee_rate = Decimal('0.15')  # Adjust based on your tier
+        net_amount = Decimal(str(price_in_purchased_currency)) * (Decimal('1.00') - google_fee_rate)
+        
+        try:
+            user = User.objects.get(id=app_user_id)
+        except User.DoesNotExist:
+            return HttpResponse(status=404)
+        
+        # Handle different events
+        if event_type == 'INITIAL_PURCHASE':
+            # User subscribed after trial
+            handle_subscription_purchase(user, payload, net_amount)
+        
+        elif event_type == 'RENEWAL':
+            # Subscription renewed
+            handle_subscription_renewal(user, payload, net_amount)
+        
+        elif event_type == 'CANCELLATION':
+            # Subscription cancelled
+            handle_subscription_cancellation(user, payload)
+        
+        elif event_type == 'EXPIRATION':
+            # Subscription expired
+            handle_subscription_expiration(user, payload)
+        
+        return HttpResponse(status=200)
+    
+    except Exception as e:
+        print(f"RevenueCat webhook error: {str(e)}")
+        return HttpResponse(status=500)
+
+
+@transaction.atomic
+def handle_subscription_purchase(user, payload, net_amount):
+    """Handle initial subscription purchase"""
+    from datetime import datetime
+    
+    # Update or create subscription
+    subscription, created = Subscription.objects.update_or_create(
+        user=user,
+        defaults={
+            'revenuecat_customer_id': payload['event']['app_user_id'],
+            'product_id': payload['event']['product_id'],
+            'status': 'active',
+            'subscription_start_date': timezone.now(),
+            'subscription_end_date': datetime.fromtimestamp(
+                payload['event']['expiration_at_ms'] / 1000
+            ),
+            'subscription_amount': Decimal(str(payload['event']['price_in_purchased_currency'])),
+            'net_amount': net_amount,
+            'is_active': True
+        }
+    )
+    
+    # Update user subscription status
+    user.has_active_subscription = True
+    user.subscription_expires_at = subscription.subscription_end_date
+    user.save(update_fields=['has_active_subscription', 'subscription_expires_at'])
+    
+    # Process referral commission (25%)
+    try:
+        referral = Referral.objects.get(referred_user=user, status='pending')
+        commission = net_amount * (referral.commission_rate / Decimal('100'))
+        
+        # Update referral
+        referral.commission_earned += commission
+        referral.status = 'active'
+        referral.save()
+        
+        # Update referrer's balance
+        referrer = referral.referrer
+        referrer.total_commission_earned += commission
+        referrer.available_commission += commission
+        referrer.save(update_fields=['total_commission_earned', 'available_commission'])
+    except Referral.DoesNotExist:
+        pass  # No referral for this user
+
+
+@transaction.atomic
+def handle_subscription_renewal(user, payload, net_amount):
+    """Handle subscription renewal"""
+    # Similar to purchase, but update existing subscription
+    handle_subscription_purchase(user, payload, net_amount)
+
+
+@transaction.atomic
+def handle_subscription_cancellation(user, payload):
+    """Handle subscription cancellation"""
+    try:
+        subscription = user.subscription
+        subscription.status = 'cancelled'
+        subscription.save()
+        
+        # Don't disable immediately - let it expire naturally
+    except Subscription.DoesNotExist:
+        pass
+
+
+@transaction.atomic
+def handle_subscription_expiration(user, payload):
+    """Handle subscription expiration"""
+    try:
+        subscription = user.subscription
+        subscription.status = 'expired'
+        subscription.is_active = False
+        subscription.save()
+        
+        # Update user status
+        user.has_active_subscription = False
+        user.save(update_fields=['has_active_subscription'])
+    except Subscription.DoesNotExist:
+        pass
+
+from django.http import JsonResponse
+from django.utils import timezone
+
+class SubscriptionMiddleware:
+    """
+    Check subscription status for protected endpoints
+    """
+    EXEMPT_URLS = [
+        '/api/auth/',
+        '/api/subscription/status/',
+        '/admin/',
+    ]
+    
+    def __init__(self, get_response):
+        self.get_response = get_response
+    
+    def __call__(self, request):
+        # Check if URL is exempt
+        if any(request.path.startswith(url) for url in self.EXEMPT_URLS):
+            return self.get_response(request)
+        
+        # Check if user is authenticated
+        if request.user.is_authenticated:
+            # Check subscription
+            if not request.user.has_active_subscription:
+                if request.user.subscription_expires_at and request.user.subscription_expires_at < timezone.now():
+                    return JsonResponse({
+                        'success': False,
+                        'statusCode': 403,
+                        'message': 'Your subscription has expired. Please renew to continue.',
+                        'data': {'subscription_expired': True}
+                    }, status=403)
+        
+        return self.get_response(request)
+    
+
+class MyReferralCodeView(StandardResponseMixin, APIView):
+    """Get user's unique referral code"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        user = request.user
+        
+        try:
+            referral_code = user.referral_code.code
+        except ReferralCode.DoesNotExist:
+            # Generate if somehow missing
+            import secrets
+            import string
+            
+            code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+            while ReferralCode.objects.filter(code=code).exists():
+                code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+            
+            ReferralCode.objects.create(user=user, code=code)
+            referral_code = code
+        
+        return self.success_response(
+            data={
+                'referral_code': referral_code,
+                'share_message': f'Join My Color Cost using my code: {referral_code}'
+            },
+            message="Referral code retrieved successfully"
+        )

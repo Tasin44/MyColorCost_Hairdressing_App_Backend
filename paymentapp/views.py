@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from django.db import transaction
 from decimal import Decimal
 from mixapp.models import ShoppingCart, ShopProduct
-from paymentapp.models import Payment, PaymentRetailerSplit
+from paymentapp.models import Payment, PaymentRetailerSplit, RetailerOrder
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 from django.views.decorators.csrf import csrf_exempt
@@ -235,9 +235,12 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
             id__in=product_ids
         ).select_related('retailer')
         
+        '''
         if products.count() != len(product_ids):
             delivery_address.delete()
             return self.error_response("Some products not found", status_code=400)
+        '''
+
         
         # ✅ Step 4: Build product map with quantities
         product_quantity_map = {p['shop_product_id']: p['quantity'] for p in products_data}
@@ -304,10 +307,11 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
                     f"Quantity not found for product {product.name}",
                     status_code=400
                 )
+
             if not retailer or not retailer.stripe_connected:
                 delivery_address.delete()
                 return self.error_response(
-                    f"Retailer for {product.name} not connected to Stripe",
+                    f"Retailer for the product '{product.name}' not connected to Stripe",
                     status_code=400
                 )
             
@@ -331,7 +335,8 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
             'name': product.name,
             'quantity': quantity,
             'price': product.market_price,
-            'total': product_total
+            'total': product_total,
+            'product_obj': product  # ✅ ADD THIS for later use
             })
             retailer_data[retailer.id]['product_total'] += product_total
             total_amount += product_total
@@ -460,6 +465,94 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
                     product.stock_status = 'in_stock'
                 product.save(update_fields=['stock_status'])
             
+
+            #added here ========================================================
+
+            # ✅ NEW: Create RetailerOrder and PaymentRetailerSplit
+            for data in retailer_data.values():
+                retailer = data['retailer']
+                product_amount = data['product_total']
+                delivery_share = data['delivery_share']
+                subtotal = product_amount + delivery_share
+                
+                # Calculate platform fee
+                platform_fee_share = (subtotal * Decimal(str(settings.STRIPE_PLATFORM_FEE_PERCENT)) / Decimal('100')).quantize(Decimal('0.01'))
+                transfer_amount = subtotal - platform_fee_share
+                
+                transfer_id = None
+                transfer_status = 'pending'
+
+                try:
+                    # Create Stripe Transfer
+                    transfer = stripe.Transfer.create(
+                        amount=int(transfer_amount * 100),
+                        currency='gbp',
+                        destination=retailer.stripe_account_id,# ← in development This is a TEST account ID
+                        transfer_group=payment.payment_intent_id,
+                        metadata={
+                            'payment_id': payment.id,
+                            'retailer_id': retailer.id
+                        }
+                    )
+                    transfer_id = transfer.id
+                    transfer_status = 'completed'
+                    
+                except stripe.error.StripeError as e:
+                    # Log error but continue
+                    transfer_status = 'failed'
+                    print(f"Transfer failed for retailer {retailer.id}: {str(e)}")
+
+                    # Create PaymentRetailerSplit
+                    PaymentRetailerSplit.objects.create(
+                        payment=payment,
+                        retailer=retailer,
+                        product_amount=product_amount,
+                        delivery_share=delivery_share,
+                        platform_fee_share=platform_fee_share,
+                        total_transfer_amount=transfer_amount,
+                        # transfer_id=transfer.id,
+                        # transfer_status='completed'
+                        transfer_id=transfer_id,
+                        transfer_status=transfer_status
+                    )
+                    
+                    # ✅ Create RetailerOrder for each product
+                    for product_data in data['products']:
+                        RetailerOrder.objects.create(
+                            payment=payment,
+                            retailer=retailer,
+                            product=product_data['product_obj'],
+                            product_name=product_data['name'],
+                            quantity=product_data['quantity'],
+                            unit_price=product_data['price'],
+                            total_amount=product_data['total'],
+                            delivery_address_label=delivery_address.address_label,
+                            delivery_full_address=delivery_address.full_address,
+                            delivery_area=delivery_address.area,
+                            delivery_postal_code=delivery_address.postal_code,
+                            delivery_phone=delivery_address.phone_number,
+                            status='pending'
+                        )
+                    
+                    # ✅ Update retailer stats
+                    retailer.total_orders += len(data['products'])
+                    retailer.total_sales += subtotal
+                    retailer.total_pending += subtotal
+                    retailer.save(update_fields=['total_orders', 'total_sales', 'total_pending'])
+
+
+                except stripe.error.StripeError as e:
+                    # Log error
+                    PaymentRetailerSplit.objects.create(
+                        payment=payment,
+                        retailer=retailer,
+                        product_amount=product_amount,
+                        delivery_share=delivery_share,
+                        platform_fee_share=platform_fee_share,
+                        total_transfer_amount=transfer_amount,
+                        transfer_status='failed'
+                    )
+
             return self.success_response(
                 data={
                     'checkout_url': session.url,
@@ -626,6 +719,8 @@ def handle_successful_payment(session):
         # ✅ Fetch products (replace cart query)
     from mixapp.models import ShopProduct
     from django.db.models import F
+    from paymentapp.models import RetailerOrder  # ✅ ADD THIS
+
     products = ShopProduct.objects.filter(
         id__in=[int(pid) for pid in product_ids if pid]
     ).select_related('retailer')
@@ -683,10 +778,19 @@ def handle_successful_payment(session):
             retailer_totals[retailer.id] = {
                 'retailer': retailer,
                 'product_amount': Decimal('0.00'),
-                'delivery_charge': retailer.delivery_charge
+                'delivery_charge': retailer.delivery_charge,
+                'products': []  # ✅ ADD THIS
             }
         
         retailer_totals[retailer.id]['product_amount'] += product_total
+
+        retailer_totals[retailer.id]['products'].append({  # ✅ ADD THIS
+            'product': product,
+            'quantity': quantity,
+            'unit_price': product.market_price,
+            'total': product_total
+        })
+        
         total_amount += product_total
     
     
@@ -735,7 +839,9 @@ def handle_successful_payment(session):
         # Calculate platform fee on this retailer's portion
         platform_fee_share = (subtotal * Decimal(str(settings.STRIPE_PLATFORM_FEE_PERCENT)) / Decimal('100')).quantize(Decimal('0.01'))
         transfer_amount = subtotal - platform_fee_share
-        
+
+        transfer_id = None
+        transfer_status = 'pending'
         try:
             ## ✅ Create Stripe Transfer (NOT in checkout, in webhook)
             transfer = stripe.Transfer.create(
@@ -748,7 +854,13 @@ def handle_successful_payment(session):
                     'retailer_id': retailer.id
                 }
             )
-            
+            transfer_id = None
+            transfer_status = 'pending'
+        except stripe.error.StripeError as e:
+            # Log error but continue with other transfers
+            transfer_status = 'failed'
+            print(f"Webhook: Transfer failed for retailer {retailer.id}: {str(e)}")
+
             # Record split
             PaymentRetailerSplit.objects.create(
                 payment=payment,
@@ -757,10 +869,34 @@ def handle_successful_payment(session):
                 delivery_share=delivery_share,
                 platform_fee_share=platform_fee_share,
                 total_transfer_amount=transfer_amount,
-                transfer_id=transfer.id,
-                transfer_status='completed'
+                # transfer_id=transfer.id,
+                # transfer_status='completed'
+                transfer_id=transfer_id,
+                transfer_status=transfer_status
             )
-        
+            # ✅ NEW: Create RetailerOrder for each product
+            for product_data in data['products']:
+                RetailerOrder.objects.create(
+                    payment=payment,
+                    retailer=retailer,
+                    product=product_data['product'],
+                    product_name=product_data['product'].name,
+                    quantity=product_data['quantity'],
+                    unit_price=product_data['unit_price'],
+                    total_amount=product_data['total'],
+                    delivery_address_label=payment.delivery_address.address_label,
+                    delivery_full_address=payment.delivery_address.full_address,
+                    delivery_area=payment.delivery_address.area,
+                    delivery_postal_code=payment.delivery_address.postal_code,
+                    delivery_phone=payment.delivery_address.phone_number,
+                    status='pending'
+                )
+            
+            # ✅ NEW: Update retailer stats
+            retailer.total_orders += len(data['products'])
+            retailer.total_sales += subtotal
+            retailer.total_pending += subtotal
+            retailer.save(update_fields=['total_orders', 'total_sales', 'total_pending'])
         except stripe.error.StripeError as e:
             # Log error but continue with other transfers
             PaymentRetailerSplit.objects.create(

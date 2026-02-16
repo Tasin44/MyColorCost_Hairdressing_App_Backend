@@ -2,6 +2,7 @@
 
 from rest_framework import serializers
 from .models import User, SubUser, OTP
+from affiliateapp.models import Referral,ReferralCode
 
 # serializers.py
 from rest_framework import serializers
@@ -54,6 +55,14 @@ class SignupSerializer(serializers.Serializer):
     contact_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
     google_id = serializers.CharField(max_length=255, required=False, allow_blank=True)
     google_signup = serializers.BooleanField(default=False)
+    referral_code = serializers.CharField(
+        max_length=10,
+        required=False,
+        allow_blank=True,
+        help_text="Optional referral code"
+    )
+    
+    # ...existing code...
     
     def validate_email(self, value):
         value = value.lower().strip()
@@ -122,7 +131,18 @@ class SignupSerializer(serializers.Serializer):
             data['owner'] = owner
         
         return data
+    def validate_referral_code(self, value):
+        """Validate referral code if provided"""
+        if value and value.strip():
+            value = value.strip().upper()
+            try:
+                ReferralCode.objects.get(code=value)
+            except ReferralCode.DoesNotExist:
+                raise serializers.ValidationError("Invalid referral code")
+        return value if value else None
     
+    #previous create method which was working vefore affiliate
+    '''
     def create(self, validated_data):
         role = validated_data['role']
         email = validated_data['email']
@@ -180,6 +200,91 @@ class SignupSerializer(serializers.Serializer):
         
         self.send_otp_email(email, otp_code)
         self.context['otp'] = otp_code
+        return user
+    '''
+    @transaction.atomic
+    def create(self, validated_data):
+        role = validated_data['role']
+        email = validated_data['email']
+        name = validated_data.get("name", "").strip()
+        contact_number = validated_data.get('contact_number', '')
+        google_signup = validated_data.get('google_signup', False)
+        google_id = validated_data.get('google_id')
+        referral_code_str = validated_data.pop('referral_code', None)
+        
+        # Delete old unverified accounts
+        User.objects.filter(email=email, verified=False).delete()
+        
+        # Create user based on signup type
+        if google_signup:
+            user = User.objects.create_user(
+                username=email,
+                email=email,
+                password=None,  # No password for Google signup
+                name=name,
+                contact_number=contact_number,
+                google_id=google_id
+            )
+        else:
+            user = User.objects.create_user(
+                username=email,
+                email=email,
+                password=validated_data['password'],
+                name=name,
+                contact_number=contact_number
+            )
+        
+        user.role = role
+        user.save(update_fields=['role'])
+        
+        # ✅ Handle staff linking
+        if role == 'staff':
+            sub_user = validated_data['sub_user']
+            sub_user.user = user
+            sub_user.name = name
+            sub_user.contact_number = contact_number
+            sub_user.status = 'ACTIVE'
+            sub_user.save()
+        
+        # ✅ Generate unique referral code for new user
+        import secrets
+        import string
+        
+        code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+        while ReferralCode.objects.filter(code=code).exists():
+            code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+        
+        ReferralCode.objects.create(user=user, code=code)
+        
+        # ✅ Track referral if code was provided
+        if referral_code_str:
+            try:
+                referral_code = ReferralCode.objects.get(code=referral_code_str)
+                from .models import Referral  # Import here to avoid circular import
+                
+                Referral.objects.create(
+                    referrer=referral_code.user,
+                    referred_user=user,
+                    referral_code=referral_code,
+                    status='pending'  # Will become 'active' when user subscribes
+                )
+            except ReferralCode.DoesNotExist:
+                pass  # Already validated, but safety check
+        
+        # ✅ Generate and send OTP
+        otp_code = ''.join(random.choices(string.digits, k=6))
+        expires_at = timezone.now() + timedelta(minutes=10)
+        
+        OTP.objects.filter(email=email, is_used=False).delete()
+        OTP.objects.create(
+            email=email,
+            otp_code=otp_code,
+            expires_at=expires_at
+        )
+        
+        self.send_otp_email(email, otp_code)
+        self.context['otp'] = otp_code
+        
         return user
 
     '''
@@ -279,7 +384,8 @@ class ResetPasswordSerializer(serializers.Serializer):
     # email = serializers.EmailField()
     # otp_code = serializers.CharField(max_length=6)
     new_password = serializers.CharField(write_only=True, min_length=8)
-    
+
+
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):
     # image=serializers.SerializerMethodField()

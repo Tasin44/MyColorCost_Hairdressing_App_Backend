@@ -89,6 +89,7 @@ class RetailerProfileSetupView(StandardResponseMixin, APIView):
                     'business_name': retailer_profile.business_name,
                     'delivery_charge': str(retailer_profile.delivery_charge),
                     'free_delivery_threshold': str(retailer_profile.free_delivery_threshold),
+                    "api_key": retailer_profile.api_key,  # ✅ ADD THIS LINE
                     'delivery_areas': list(
                         retailer_profile.delivery_areas.values('id', 'area_name')
                     )
@@ -433,6 +434,123 @@ class DeliveryAddressListCreateView(StandardResponseMixin, APIView):
             data=serializer.errors
         )
 
+
+#===================================================new views for retailer 
+# ...existing code...
+
+class RetailerOrderListView(StandardResponseMixin, APIView):
+    """
+    GET: List all orders for retailer
+    PATCH: Update order status
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get retailer's orders"""
+        user = request.user
+        
+        if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+            return self.error_response("Unauthorized", status_code=403)
+        
+        retailer = user.retailer_profile
+        
+        # ✅ Get orders
+        from paymentapp.models import RetailerOrder
+        from paymentapp.serializers import RetailerOrderSerializer
+        
+        queryset = RetailerOrder.objects.filter(
+            retailer=retailer
+        ).select_related('payment__user', 'product').order_by('-created_at')
+        
+        # ✅ Filter by status
+        status = request.query_params.get('status')
+        if status in ['pending', 'processing', 'shipped', 'delivered', 'cancelled']:
+            queryset = queryset.filter(status=status)
+        
+        serializer = RetailerOrderSerializer(queryset, many=True)
+        
+        return self.success_response(
+            data={
+                'orders': serializer.data,
+                'total_count': queryset.count()
+            },
+            message="Orders retrieved",
+            status_code=200
+        )
+
+
+class RetailerOrderDetailView(StandardResponseMixin, APIView):
+    """Update order status"""
+    permission_classes = [IsAuthenticated]
+    
+    @transaction.atomic
+    def patch(self, request, order_id):
+        """Update order status"""
+        user = request.user
+        
+        if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+            return self.error_response("Unauthorized", status_code=403)
+        
+        retailer = user.retailer_profile
+        
+        from paymentapp.models import RetailerOrder
+        
+        try:
+            order = RetailerOrder.objects.get(id=order_id, retailer=retailer)
+        except RetailerOrder.DoesNotExist:
+            return self.error_response("Order not found", status_code=404)
+        
+        new_status = request.data.get('status')
+        
+        if new_status not in ['pending', 'processing', 'shipped', 'delivered', 'cancelled']:
+            return self.error_response("Invalid status", status_code=400)
+        
+        order.status = new_status
+        order.save(update_fields=['status', 'updated_at'])
+        
+        from paymentapp.serializers import RetailerOrderSerializer
+        serializer = RetailerOrderSerializer(order)
+        
+        return self.success_response(
+            data=serializer.data,
+            message="Order status updated",
+            status_code=200
+        )
+
+
+class RetailerPaymentListView(StandardResponseMixin, APIView):
+    """List all payments received by retailer"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get retailer's payment history"""
+        user = request.user
+        
+        if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+            return self.error_response("Unauthorized", status_code=403)
+        
+        retailer = user.retailer_profile
+        
+        from paymentapp.models import PaymentRetailerSplit
+        from paymentapp.serializers import RetailerPaymentSummarySerializer
+        
+        queryset = PaymentRetailerSplit.objects.filter(
+            retailer=retailer
+        ).select_related('payment__user').order_by('-created_at')
+        
+        serializer = RetailerPaymentSummarySerializer(queryset, many=True)
+        
+        return self.success_response(
+            data={
+                'payments': serializer.data,
+                'total_count': queryset.count(),
+                'total_earnings': sum(p.total_transfer_amount for p in queryset)
+            },
+            message="Payment history retrieved",
+            status_code=200
+        )
+
+
 #=======================================================================================================================================
 
 #Stripe code for retailer 
@@ -451,6 +569,9 @@ class RetailerStripeOnboardView(StandardResponseMixin, APIView):
         #     return self.error_response("Unauthorized", status_code=403)
 
         if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+            # For API clients, return JSON error instead of rendering template
+            if request.headers.get('Accept') == 'application/json':
+                return self.error_response("Unauthorized access", status_code=403)
             return render(request, 'retailer/stripe_error.html', {
                 'error': 'Unauthorized access'
             })
@@ -465,11 +586,26 @@ class RetailerStripeOnboardView(StandardResponseMixin, APIView):
         #     })
 
         # ✅ Check if already connected
+        '''
         if retailer.stripe_connected:
             return self.success_response(
                 message="Stripe account onboarding already completed",
                 status_code=200
             )
+        '''
+        if retailer.stripe_connected:
+            if request.headers.get('Accept') == 'application/json':
+                return self.success_response(
+                    message="Stripe account onboarding already completed",
+                    data={
+                        "already_connected": True,
+                        "stripe_account_id": retailer.stripe_account_id
+                    },
+                    status_code=200
+                )
+            return render(request, 'retailer/stripe_success.html', {
+                'message': 'Stripe account already connected'
+            })
         
         # ✅ Check if account exists and onboarding is complete
         if retailer.stripe_account_id:
@@ -580,13 +716,29 @@ class RetailerStripeOnboardView(StandardResponseMixin, APIView):
                 refresh_url=f"{settings.BASE_URL}/retailer/stripe/onboard-complete/?onboard=error&account_id={account_id}",
                 return_url=f"{settings.BASE_URL}/retailer/stripe/onboard-complete/?onboard=success&account_id={account_id}"
             )
-            
-            return redirect(account_link.url)
+            '''
+                        return redirect(account_link.url)
         
         except stripe.error.StripeError as e:
             return render(request, 'retailer/stripe_error.html', {
                 'error': str(e)
             })
+            '''
+            # ✅ For browser requests: Redirect
+            if request.method == "GET":
+                return redirect(account_link.url)
+
+            # ✅ For API requests: Return JSON with URL
+            return Response({
+                "onboarding_url": account_link.url,
+                "account_id": account_id,
+                "message": "Open onboarding_url in browser to complete setup"
+            })
+
+        except stripe.error.StripeError as e:
+                return Response({
+                    "error": str(e)
+                }, status=500)
 
 # class RetailerStripeCompleteView(StandardResponseMixin, APIView):
 #     """Handle Stripe onboarding completion"""
@@ -619,6 +771,7 @@ class RetailerStripeOnboardView(StandardResponseMixin, APIView):
 
 # ...existing code...
 
+'''
 class RetailerStripeCompleteView(StandardResponseMixin, APIView):
     """Handle Stripe onboarding completion with status"""
     permission_classes = [AllowAny]  # Changed to AllowAny for Stripe redirects
@@ -649,6 +802,54 @@ class RetailerStripeCompleteView(StandardResponseMixin, APIView):
             return redirect(f"{settings.BASE_URL}/retailer/dashboard/?onboard=error")
         except Exception as e:
             return redirect(f"{settings.BASE_URL}/retailer/dashboard/?onboard=error")
+'''
+class RetailerStripeCompleteView(APIView):
+    """Handle Stripe onboarding completion with HTML pages"""
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        account_id = request.GET.get('account_id')
+        onboard_status = request.GET.get('onboard')
+        
+        if not account_id:
+            return render(request, 'retailer/stripe_error.html', {
+                'error': 'Missing account ID'
+            })
+        
+        try:
+            from .models import RetailerProfile
+            retailer = RetailerProfile.objects.get(stripe_account_id=account_id)
+            
+            # ✅ Verify onboarding completion
+            if is_stripe_onboarding_complete(account_id):
+                if not retailer.stripe_connected:
+                    retailer.stripe_connected = True
+                    retailer.stripe_connection_date = timezone.now()
+                    retailer.save()
+                
+                # ✅ Render SUCCESS page
+                return render(request, 'retailer/stripe_success.html', {
+                    'business_name': retailer.business_name,
+                    'account_id': account_id
+                })
+            else:
+                # ✅ Render INCOMPLETE page
+                return render(request, 'retailer/stripe_incomplete.html', {
+                    'retry_url': f"{settings.BASE_URL}/retailer/stripe/onboard/",
+                    'account_id': account_id
+                })
+        
+        except RetailerProfile.DoesNotExist:
+            return render(request, 'retailer/stripe_error.html', {
+                'error': 'Retailer account not found'
+            })
+        except Exception as e:
+            return render(request, 'retailer/stripe_error.html', {
+                'error': str(e)
+            })
+
+
+
 
 class RetailerStripeStatusView(StandardResponseMixin, APIView):
     """Check retailer's Stripe connection status"""

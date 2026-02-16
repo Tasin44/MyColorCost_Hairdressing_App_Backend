@@ -48,7 +48,8 @@ INSTALLED_APPS = [
     'mixapp',
     'appointmentapp',
     'retailerapp',  # ✅ ADD THIS
-    'paymentapp'
+    'paymentapp',
+    'affiliateapp',
     # 'productapp',
 ]
 
@@ -61,6 +62,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+       # 'myproject.middleware.SubscriptionMiddleware',  # ❌ Comment this out for now
 ]
 
 ROOT_URLCONF = 'myproject.urls'

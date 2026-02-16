@@ -41,7 +41,7 @@ class RetailerProfileSetupSerializer(serializers.ModelSerializer):
         model = RetailerProfile
         fields = [
             'business_name', 'delivery_charge',
-            'free_delivery_threshold', 'delivery_areas'
+            'free_delivery_threshold', 'delivery_areas','api_key'
         ]
     
     def validate_delivery_areas(self, value):

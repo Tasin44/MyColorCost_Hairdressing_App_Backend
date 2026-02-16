@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework import status
+from rest_framework import status, serializers
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -202,6 +202,26 @@ class LoginView(StandardResponseMixin, APIView):
         serializer = LoginSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
+
+            # ✅ ADD THIS BLOCK HERE (BEFORE TOKEN GENERATION)
+            if user.role == 'retailer':
+                if not hasattr(user, 'retailer_profile'):
+                    return self.error_response(
+                        "Profile setup incomplete. Please complete your profile first.",
+                        status_code=403
+                    )
+                
+                if not user.retailer_profile.is_approved:
+                    return self.error_response(
+                        "Your account is pending admin approval. Please wait for approval.",
+                        status_code=403
+                    )
+                
+            # ✅ Generate image URL
+            image_url = None
+            if user.image:
+                image_url = request.build_absolute_uri(user.image.url)
+
             refresh = RefreshToken.for_user(user)
             
             return self.success_response(
@@ -213,6 +233,7 @@ class LoginView(StandardResponseMixin, APIView):
                         "email": user.email,
                         "name": user.name,
                         "account_type": user.role,
+                        "image": image_url  # ✅ Added
                     }
                 },
                 message="Login successful.",
@@ -257,9 +278,9 @@ class ForgotPasswordView(StandardResponseMixin, APIView):
         )
 
 
+
 class ResetPasswordView(StandardResponseMixin, APIView):
     permission_classes = [IsAuthenticated]  # user must be logged in via OTP verify token
-
 
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
@@ -279,6 +300,9 @@ class ResetPasswordView(StandardResponseMixin, APIView):
             status_code=400,
             data=serializer.errors
         )
+
+
+
 
 
 class ProfileUpdateView(APIView):

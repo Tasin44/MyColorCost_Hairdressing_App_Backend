@@ -21,7 +21,7 @@ from .views import (
     ScanBarcodeView, ManualProductEntryView,
     UpdateScannedProductView,ProductScanHistoryView,
     AddToCartView, ViewCartView, RemoveFromCartView, UpdateCartItemView,
-    ExpenseViewSet
+    ExpenseViewSet,RetailerProductsListView,UserInventoryProductsView
 )
  
 app_name = 'mixapp'
@@ -68,11 +68,19 @@ urlpatterns = [
 
 
 
-        # Cart APIs
+    # Cart APIs
     path('cart/add/', AddToCartView.as_view(), name='add-to-cart'),
     path('cart/', ViewCartView.as_view(), name='view-cart'),
     path('cart/<int:cart_item_id>/', RemoveFromCartView.as_view(), name='remove-from-cart'),
     path('cart/<int:cart_item_id>/update/', UpdateCartItemView.as_view(), name='update-cart'),
+
+
+    #=======================================================
+    # ✅ NEW: Retailer products (for purchasing)
+    path('retailer-products/', RetailerProductsListView.as_view(), name='retailer-products-list'),
+    
+    # ✅ NEW: User inventory (scanned + manual)
+    path('user-inventory/', UserInventoryProductsView.as_view(), name='user-inventory'),
 
 ]
 

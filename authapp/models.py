@@ -5,6 +5,7 @@ from django.utils import timezone
 from django.conf import settings
 import uuid
 from django.core.validators import MinValueValidator
+from decimal import Decimal
 
 class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -72,7 +73,32 @@ class User(AbstractUser):
         related_name='authapp_user_set',
         blank=True
     )
-
+    # Affiliate tracking
+    total_commission_earned = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Total commission earned from referrals"
+    )
+    
+    available_commission = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Available commission for withdrawal"
+    )
+    
+    # Subscription status
+    has_active_subscription = models.BooleanField(
+        default=False,
+        help_text="Does user have active subscription?"
+    )
+    
+    subscription_expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When subscription expires"
+    )
     class Meta:
         db_table = 'users'
         indexes = [

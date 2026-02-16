@@ -66,6 +66,20 @@ class RetailerProfile(models.Model):
     )
     total_cancelled = models.IntegerField(default=0)
 
+    # ✅ ADD THESE TWO FIELDS
+    api_key = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="API key for retailer integrations"
+    )
+    
+    is_approved = models.BooleanField(
+        default=False,
+        help_text="Admin approval status - must be True to login"
+    )
+    
     # ✅ ADD THESE STRIPE FIELDS
     stripe_account_id = models.CharField(
         max_length=255,
@@ -79,7 +93,7 @@ class RetailerProfile(models.Model):
         help_text="Is Stripe onboarding complete?"
     )
     stripe_connection_date = models.DateTimeField(null=True, blank=True)
-    
+
     # ✅ Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
