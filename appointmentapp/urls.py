@@ -12,7 +12,8 @@ from .views import (
     AppointmentDetailView,
     AppointmentStatsView,
     CleanupOldSlotsView,
-    DashboardStatsView
+    DashboardStatsView,
+    BookingPageView
 )
 
 app_name = 'appointment'
@@ -44,12 +45,15 @@ urlpatterns = [
     path('create/', AppointmentCreateView.as_view(), name='create'),
     
     # ==================== CLIENT SELF-BOOKING ====================
-    
+
+    # 1. HTML Booking Page (must come FIRST)
+    path('book/<str:token>/', BookingPageView.as_view(), name='booking-page'),
+
     # Client self-booking endpoint (no auth required)
     # GET /appointment/book/{token}/ - Get booking page info
     # POST /appointment/book/{token}/ - Create appointment
-    path('book/<str:token>/', AppointmentSelfBookingView.as_view(), name='self-booking'),
-    
+    #path('book/<str:token>/', AppointmentSelfBookingView.as_view(), name='self-booking'),
+    path('book/<str:token>/data/', AppointmentSelfBookingView.as_view(), name='booking-data'),
     # ==================== APPOINTMENT MANAGEMENT ====================
     
     # List appointments with filtering
@@ -86,4 +90,7 @@ urlpatterns = [
     path('cleanup-slots/', CleanupOldSlotsView.as_view(), name='cleanup-slots'),
 
     path('dashboard/stats/', DashboardStatsView.as_view(), name='dashboard-stats'),
+
+
+   # path('book/<str:token>/', BookingPageView.as_view(), name='booking-page'),
 ]

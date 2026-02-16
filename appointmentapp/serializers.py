@@ -15,33 +15,91 @@ from authapp.models import User
 
 from django.core.mail import send_mail
 
+# def send_appointment_email(appointment):
+#     """Send appointment confirmation email"""
+#     subject = f"Appointment Confirmation - {appointment.appointment_date}"
+#     message = f"""
+#     Dear {appointment.get_client_name()},
+    
+#     Your appointment has been confirmed:
+    
+#     Date: {appointment.appointment_date}
+#     Time: {appointment.appointment_time}
+#     Service: {appointment.service_type.name if appointment.service_type else 'N/A'}
+    
+#     Location: [Your Salon Address]
+    
+#     Looking forward to seeing you!
+#     """
+    
+#     email = appointment.get_client_email()
+#     if email:
+#         send_mail(
+#             subject,
+#             message,
+#             'noreply@yoursalon.com',
+#             [email],
+#             fail_silently=True
+#         )
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
+
 def send_appointment_email(appointment):
-    """Send appointment confirmation email"""
-    subject = f"Appointment Confirmation - {appointment.appointment_date}"
-    message = f"""
-    Dear {appointment.get_client_name()},
+    """Send confirmation to BOTH client and salon owner"""
     
-    Your appointment has been confirmed:
+    # Email to CLIENT
+    client_subject = f"Appointment Confirmation - {appointment.appointment_date}"
+    client_message = f"""
+Dear {appointment.get_client_name()},
+
+Your appointment has been confirmed!
+
+📅 Date: {appointment.appointment_date}
+🕐 Time: {appointment.appointment_time}
+💇 Service: {appointment.get_service_display()}
+📍 Salon: {appointment.user.name or appointment.user.email}
+
+Thank you for booking with us!
+
+---
+My Colour Cost
+"""
     
-    Date: {appointment.appointment_date}
-    Time: {appointment.appointment_time}
-    Service: {appointment.service_type.name if appointment.service_type else 'N/A'}
-    
-    Location: [Your Salon Address]
-    
-    Looking forward to seeing you!
-    """
-    
-    email = appointment.get_client_email()
-    if email:
+    client_email = appointment.get_client_email()
+    if client_email:
         send_mail(
-            subject,
-            message,
-            'noreply@yoursalon.com',
-            [email],
+            client_subject,
+            client_message,
+            'noreply@mycolourcost.com',  # Change this
+            [client_email],
             fail_silently=True
         )
+    
+    # Email to SALON OWNER
+    owner_subject = f"New Appointment Booking - {appointment.appointment_date}"
+    owner_message = f"""
+New appointment booked!
 
+👤 Client: {appointment.get_client_name()}
+📞 Contact: {appointment.get_client_contact()}
+📧 Email: {appointment.get_client_email()}
+📅 Date: {appointment.appointment_date}
+🕐 Time: {appointment.appointment_time}
+💇 Service: {appointment.get_service_display()}
+📝 Type: {appointment.get_appointment_type_display()}
+
+---
+My Colour Cost Dashboard
+"""
+    
+    owner_email = appointment.user.email
+    send_mail(
+        owner_subject,
+        owner_message,
+        'noreply@mycolourcost.com',  # Change this
+        [owner_email],
+        fail_silently=True
+    )
 class WorkingHoursSerializer(serializers.ModelSerializer):
     """
     Serializer for setting working hours (one-time setup).

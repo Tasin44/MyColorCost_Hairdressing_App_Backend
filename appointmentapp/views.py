@@ -27,6 +27,7 @@ from .serializers import (
 )
 from clientapp.models import Client
 from mixapp.models import Mix
+from django.shortcuts import render
 
 class StandardResponseMixin:
     """Mixin for consistent API responses"""
@@ -1274,3 +1275,97 @@ class DashboardStatsView(StandardResponseMixin, APIView):
             message="Dashboard statistics retrieved successfully",
             status_code=200
         )
+
+# class BookingPageView(APIView):
+#     """Render HTML booking page"""
+#     permission_classes = [AllowAny]
+    
+#     def get(self, request, token):
+#         """Render booking page template"""
+#         try:
+#             appointment_url = AppointmentURL.objects.get(token=token, is_active=True)
+#             return render(request, 'appointmentapp/booking_page.html', {'token': token})
+#         except AppointmentURL.DoesNotExist:
+#             return render(request, 'appointmentapp/invalid_link.html')
+# ...existing code...
+
+# class BookingPageView(APIView):
+#     permission_classes = [AllowAny]
+    
+#     def get(self, request, token):
+#         """Return booking page data as JSON for AJAX"""
+#         try:
+#             appointment_url = AppointmentURL.objects.select_related('user').get(
+#                 token=token,
+#                 is_active=True
+#             )
+#         except AppointmentURL.DoesNotExist:
+#             return Response({
+#                 'success': False,
+#                 'message': 'Invalid booking link'
+#             }, status=404)
+        
+#         # Get working hours
+#         try:
+#             working_hours = WorkingHours.objects.get(user=appointment_url.user)
+#         except WorkingHours.DoesNotExist:
+#             return Response({
+#                 'success': False,
+#                 'message': 'Working hours not configured'
+#             }, status=400)
+        
+#         # Get services
+#         services = ServiceType.objects.filter(user=appointment_url.user).values('id', 'name')
+        
+#         return Response({
+#             'success': True,
+#             'data': {
+#                 'user_id': appointment_url.user.id,
+#                 'salon_name': appointment_url.user.name or 'Our Salon',
+#                 'services': list(services),
+#                 'working_hours': {
+#                     'start_time': working_hours.start_time.strftime('%H:%M'),
+#                     'end_time': working_hours.end_time.strftime('%H:%M'),
+#                     'off_days': working_hours.get_off_days_list()
+#                 }
+#             }
+#         })
+
+# ...existing code...
+
+class BookingPageView(APIView):
+    """
+    Render HTML booking page for clients (no auth required).
+    This just serves the HTML template. The JavaScript in the template
+    will fetch booking data from AppointmentSelfBookingView.get()
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request, token):
+        """Render booking page HTML template"""
+        try:
+            # Verify token exists and is active
+            appointment_url = AppointmentURL.objects.select_related('user').get(
+                token=token,
+                is_active=True
+            )
+            
+            # Just render the HTML template
+            # JavaScript will handle data fetching via AJAX
+            return render(
+                request, 
+                'appointmentapp/booking_page.html',
+                {'token': token}
+            )
+            
+        except AppointmentURL.DoesNotExist:
+            # Optionally create an error page template
+            return render(
+                request,
+                'appointmentapp/invalid_link.html',
+                {'message': 'Invalid or expired booking link'},
+                status=404
+            )
+
+# ...existing code...
+# ...existing code...
