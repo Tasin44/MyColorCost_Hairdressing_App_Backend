@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join My Colour Cost</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(180deg, #E293D3 0%, #F093BA 50%, #FF8FAB 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+            max-width: 450px;
+            width: 100%;
+            padding: 50px 40px;
+            text-align: center;
+            animation: slideUp 0.6s ease-out;
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .logo {
+            width: 200px;
+            height: auto;
+            margin-bottom: 30px;
+        }
+        
+        .profile-section {
+            margin-bottom: 30px;
+        }
+        
+        .profile-image {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 4px solid #E293D3;
+            margin-bottom: 15px;
+        }
+        
+        .default-avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #E293D3 0%, #FF8FAB 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 40px;
+            color: white;
+            font-weight: bold;
+            margin: 0 auto 15px;
+        }
+        
+        .referrer-name {
+            font-size: 24px;
+            color: #1f2937;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .referrer-email {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 20px;
+        }
+        
+        .invitation-text {
+            font-size: 18px;
+            color: #4b5563;
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }
+        
+        .app-name {
+            font-size: 22px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #E293D3 0%, #FF8FAB 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 30px;
+        }
+        
+        .referral-code-box {
+            background: #f9fafb;
+            border: 2px dashed #E293D3;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .referral-label {
+            font-size: 12px;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+        
+        .referral-code {
+            font-size: 24px;
+            font-weight: bold;
+            color: #E293D3;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .download-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #E293D3 0%, #FF8FAB 100%);
+            color: white;
+            padding: 16px 50px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 18px;
+            transition: transform 0.3s, box-shadow 0.3s;
+            box-shadow: 0 10px 30px rgba(226, 147, 211, 0.4);
+            border: none;
+            cursor: pointer;
+        }
+        
+        .download-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(226, 147, 211, 0.5);
+        }
+        
+        .download-btn:active {
+            transform: translateY(-1px);
+        }
+        
+        .benefits {
+            margin-top: 30px;
+            text-align: left;
+        }
+        
+        .benefit-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            font-size: 14px;
+            color: #4b5563;
+        }
+        
+        .benefit-icon {
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #E293D3 0%, #FF8FAB 100%);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-weight: bold;
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+        
+        .error-container {
+            padding: 40px;
+        }
+        
+        .error-icon {
+            font-size: 60px;
+            margin-bottom: 20px;
+        }
+        
+        .error-message {
+            color: #ef4444;
+            font-size: 18px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {% if valid %}
+            <!-- Logo placeholder - replace with actual logo if needed -->
+            <div class="logo" style="margin: 0 auto 30px;">
+                <svg viewBox="0 0 300 100" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" style="stop-color:#E293D3;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#FF8FAB;stop-opacity:1" />
+                        </linearGradient>
+                    </defs>
+                    <text x="150" y="60" font-size="32" font-weight="bold" fill="url(#logoGradient)" text-anchor="middle">My COLOUR cost</text>
+                </svg>
+            </div>
+            
+            <div class="profile-section">
+                {% if referrer.profile_image %}
+                    <img src="{{ referrer.profile_image }}" alt="{{ referrer.name }}" class="profile-image">
+                {% else %}
+                    <div class="default-avatar">
+                        {{ referrer.name|first|upper }}
+                    </div>
+                {% endif %}
+                
+                <h2 class="referrer-name">{{ referrer.name }}</h2>
+                <p class="referrer-email">{{ referrer.email }}</p>
+            </div>
+            
+            <p class="invitation-text">
+                invited to join
+            </p>
+            <p class="app-name">My Colour Cost</p>
+            
+            <div class="referral-code-box">
+                <div class="referral-label">Referral Code</div>
+                <div class="referral-code">{{ referrer.referral_code }}</div>
+            </div>
+            
+            <button class="download-btn" onclick="handleDownload()">
+                Download Now
+            </button>
+            
+            <div class="benefits">
+                <div class="benefit-item">
+                    <div class="benefit-icon">✓</div>
+                    <span>Get exclusive beauty recommendations</span>
+                </div>
+                <div class="benefit-item">
+                    <div class="benefit-icon">✓</div>
+                    <span>Track your color cosmetics collection</span>
+                </div>
+                <div class="benefit-item">
+                    <div class="benefit-icon">✓</div>
+                    <span>Discover new products and trends</span>
+                </div>
+            </div>
+        {% else %}
+            <div class="error-container">
+                <div class="error-icon">⚠️</div>
+                <p class="error-message">{{ error_message }}</p>
+                <p style="color: #6b7280; margin-top: 10px; font-size: 14px;">
+                    Please check your referral link and try again.
+                </p>
+            </div>
+        {% endif %}
+    </div>
+    
+    <script>
+        function handleDownload() {
+            // TODO: Replace with actual app store links
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            const isAndroid = /Android/.test(navigator.userAgent);
+            
+            if (isIOS) {
+                // window.location.href = 'https://apps.apple.com/your-app';
+                alert('iOS App Store link coming soon!');
+            } else if (isAndroid) {
+                // window.location.href = 'https://play.google.com/store/apps/details?id=your.app';
+                alert('Google Play Store link coming soon!');
+            } else {
+                alert('Please visit this page on your mobile device to download the app.');
+            }
+        }
+    </script>
+</body>
+</html>
+
+
+

@@ -53,3 +53,15 @@ class SubscriptionSerializer(serializers.ModelSerializer):
             'subscription_amount', 'is_active'
         ]
         read_only_fields = fields
+
+
+class ReferrerPublicProfileSerializer(serializers.Serializer):
+    """Serializer for public referrer profile"""
+    name = serializers.CharField()
+    email = serializers.EmailField()
+    profile_image = serializers.URLField(allow_null=True, required=False)
+    referral_code = serializers.CharField()
+
+
+
+

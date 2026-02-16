@@ -12,7 +12,7 @@ from .models import ReferralCode, Referral, CommissionWithdrawal, Subscription
 from .serializers import (
     ReferralStatsSerializer,
     CommissionWithdrawalSerializer,
-    SubscriptionSerializer
+    SubscriptionSerializer,ReferrerPublicProfileSerializer
 )
 
 
@@ -357,11 +357,91 @@ class MyReferralCodeView(StandardResponseMixin, APIView):
             
             ReferralCode.objects.create(user=user, code=code)
             referral_code = code
-        
+
+        # ✅ Build the referral URL
+        referral_url = request.build_absolute_uri(
+            f'/affiliate/referral/join/?code={referral_code}'
+        )
+
         return self.success_response(
             data={
                 'referral_code': referral_code,
+                'referral_url': referral_url,  # ✅ Added this
                 'share_message': f'Join My Color Cost using my code: {referral_code}'
             },
             message="Referral code retrieved successfully"
         )
+    
+#=============================================================================================
+
+from django.shortcuts import render
+from django.views.generic import TemplateView
+
+class ReferralLandingPageView(TemplateView):
+    """Public landing page for referral links - NO AUTHENTICATION REQUIRED"""
+    template_name = 'affiliateapp/referral_landing.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        referral_code = self.request.GET.get('code', '')
+        
+        try:
+            # Get referral code object
+            ref_code_obj = ReferralCode.objects.select_related('user').get(code=referral_code)
+            user = ref_code_obj.user
+            
+            # Build profile data
+            context['referrer'] = {
+                'name': user.get_full_name() or user.email.split('@')[0],
+                'email': user.email,
+                'profile_image': user.profile_image.url if hasattr(user, 'profile_image') and user.profile_image else None,
+                'referral_code': referral_code
+            }
+            context['valid'] = True
+            
+        except ReferralCode.DoesNotExist:
+            context['valid'] = False
+            context['error_message'] = 'Invalid referral code'
+        
+        return context
+
+
+class ReferralLandingAPIView(StandardResponseMixin, APIView):
+    """API endpoint to get referrer info - NO AUTHENTICATION REQUIRED"""
+    permission_classes = []  # Public endpoint
+    
+    def get(self, request):
+        referral_code = request.GET.get('code', '').strip()
+        
+        if not referral_code:
+            return self.error_response(
+                "Referral code is required",
+                status_code=400
+            )
+        
+        try:
+            # Get referral code object
+            ref_code_obj = ReferralCode.objects.select_related('user').get(code=referral_code)
+            user = ref_code_obj.user
+            
+            # Build response data
+            data = {
+                'name': user.get_full_name() or user.email.split('@')[0],
+                'email': user.email,
+                'profile_image': user.profile_image.url if hasattr(user, 'profile_image') and user.profile_image else None,
+                'referral_code': referral_code
+            }
+            
+            serializer = ReferrerPublicProfileSerializer(data=data)
+            serializer.is_valid()
+            
+            return self.success_response(
+                data=serializer.data,
+                message="Referrer profile retrieved successfully"
+            )
+            
+        except ReferralCode.DoesNotExist:
+            return self.error_response(
+                "Invalid referral code",
+                status_code=404
+            )

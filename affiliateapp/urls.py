@@ -4,7 +4,9 @@ from .views import (
     WithdrawalRequestView,
     SubscriptionStatusView,
     revenuecat_webhook,
-    MyReferralCodeView  # ✅ Add this
+    MyReferralCodeView  ,# ✅ Add this
+    ReferralLandingPageView,  # ✅ Add this
+    ReferralLandingAPIView    # ✅ Add this
 )
 
 urlpatterns = [
@@ -20,4 +22,17 @@ urlpatterns = [
 
     path('referral/my-code/', MyReferralCodeView.as_view(), name='my-referral-code'),  # ✅ Add this
 
+    #====================================================================
+
+    # Subscription
+    path('subscription/status/', SubscriptionStatusView.as_view(), name='subscription-status'),
+    
+    # RevenueCat webhook
+    path('webhook/revenuecat/', revenuecat_webhook, name='revenuecat-webhook'),
+
+    # ✅ Public referral landing page (HTML)
+    path('referral/join/', ReferralLandingPageView.as_view(), name='referral-landing'),
+    
+    # ✅ Public API endpoint (JSON)
+    path('referral/info/', ReferralLandingAPIView.as_view(), name='referral-info-api'),
 ]
