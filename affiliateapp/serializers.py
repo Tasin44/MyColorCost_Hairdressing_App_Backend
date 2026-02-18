@@ -48,7 +48,7 @@ class SubscriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Subscription
         fields = [
-            'status', 'product_id', 'trial_end_date',
+            'status', 'product_id', 'trial_end_date','plan_type',
             'subscription_start_date', 'subscription_end_date',
             'subscription_amount', 'is_active'
         ]
@@ -63,5 +63,24 @@ class ReferrerPublicProfileSerializer(serializers.Serializer):
     referral_code = serializers.CharField()
 
 
-
+class SubscriptionCreateSerializer(serializers.Serializer):
+    """Serializer for creating subscription with referral"""
+    # user_id = serializers.IntegerField()
+    user_id = serializers.UUIDField()  # ✅ Changed from IntegerField
+    referral_code = serializers.CharField(max_length=10,required=False, allow_blank=True)
+    subscription_plan = serializers.ChoiceField(choices=['monthly', 'yearly'])
+    
+    def validate_referral_code(self, value):
+        """Check if referral code exists"""
+        if not ReferralCode.objects.filter(code=value).exists():
+            raise serializers.ValidationError("Invalid referral code")
+        return value
+    
+    def validate_user_id(self, value):
+        """Check if user exists"""
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        if not User.objects.filter(id=value).exists():
+            raise serializers.ValidationError("User not found")
+        return value
 

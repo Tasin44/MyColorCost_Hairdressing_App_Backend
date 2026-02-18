@@ -6,7 +6,8 @@ from .views import (
     revenuecat_webhook,
     MyReferralCodeView  ,# ✅ Add this
     ReferralLandingPageView,  # ✅ Add this
-    ReferralLandingAPIView    # ✅ Add this
+    ReferralLandingAPIView ,   # ✅ Add this
+    CreateSubscriptionView  # ✅ Add this import
 )
 
 urlpatterns = [
@@ -24,6 +25,8 @@ urlpatterns = [
 
     #====================================================================
 
+    path('subscription/create/', CreateSubscriptionView.as_view(), name='subscription-create'),
+    
     # Subscription
     path('subscription/status/', SubscriptionStatusView.as_view(), name='subscription-status'),
     

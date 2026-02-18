@@ -265,9 +265,9 @@ STRIPE_WEBHOOK_SECRET='whsec_vMDymKpbvdeU5BWuD0EVY9ZK8GK98YAq' # I got it from s
 
 STRIPE_PLATFORM_FEE_PERCENT = 5
 
-# BASE_URL = "https://6zpmb4x8-8015.inc1.devtunnels.ms"
+BASE_URL = "https://6zpmb4x8-8015.inc1.devtunnels.ms"
 
-BASE_URL = "http://10.10.12.14:8000"
+# BASE_URL = "http://10.10.12.14:8000"
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",

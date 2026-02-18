@@ -142,12 +142,24 @@ class Subscription(models.Model):
         default=Decimal('0.00'),
         help_text="Amount after Google Play fees"
     )
+    # ✅ ADD THIS NEW FIELD
+    PLAN_CHOICES = (
+        ('monthly', 'Monthly'),
+        ('yearly', 'Yearly'),
+    )
+    plan_type = models.CharField(
+        max_length=20,
+        choices=PLAN_CHOICES,
+        default='monthly',
+        help_text="Subscription plan type"
+    )
+    
     
     # Tracking
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = 'subscriptions'
 

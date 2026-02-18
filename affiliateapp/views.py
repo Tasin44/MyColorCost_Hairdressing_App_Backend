@@ -12,7 +12,8 @@ from .models import ReferralCode, Referral, CommissionWithdrawal, Subscription
 from .serializers import (
     ReferralStatsSerializer,
     CommissionWithdrawalSerializer,
-    SubscriptionSerializer,ReferrerPublicProfileSerializer
+    SubscriptionSerializer,ReferrerPublicProfileSerializer,
+    SubscriptionCreateSerializer  # ✅ Add this import
 )
 
 
@@ -144,15 +145,22 @@ class SubscriptionStatusView(StandardResponseMixin, APIView):
             subscription = user.subscription
             serializer = SubscriptionSerializer(subscription)
             
+            # ✅ Enhanced response with plan info
             return self.success_response(
-                data=serializer.data,
+                data={
+                    'is_subscribed': subscription.is_active,
+                    'plan_type': subscription.plan_type,
+                    'status': subscription.status,
+                    'subscription_details': serializer.data
+                },
                 message="Subscription status retrieved"
             )
         except Subscription.DoesNotExist:
             return self.success_response(
                 data={
+                    'is_subscribed': False,
+                    'plan_type': None,
                     'status': 'none',
-                    'has_active_subscription': False,
                     'message': 'No active subscription'
                 },
                 message="No subscription found"
@@ -445,3 +453,89 @@ class ReferralLandingAPIView(StandardResponseMixin, APIView):
                 "Invalid referral code",
                 status_code=404
             )
+
+
+
+class CreateSubscriptionView(StandardResponseMixin, APIView):
+    """
+    POST: Create subscription with referral tracking
+    Expected payload:
+    {
+        "user_id": 123,
+        "referral_code": "ABC12345",
+        "subscription_plan": "monthly" or "yearly"
+    }
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @transaction.atomic
+    def post(self, request):
+        serializer = SubscriptionCreateSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return self.error_response(
+                "Invalid data",
+                status_code=400,
+                data=serializer.errors
+            )
+        
+        user_id = serializer.validated_data['user_id']
+        referral_code = serializer.validated_data['referral_code']
+        plan_type = serializer.validated_data['subscription_plan']
+        
+        try:
+            # Get user and referral code
+            user = User.objects.get(id=user_id)
+            ref_code_obj = ReferralCode.objects.get(code=referral_code)
+            
+            # Check if user is trying to use their own code
+            if ref_code_obj.user == user:
+                return self.error_response(
+                    "Cannot use your own referral code",
+                    status_code=400
+                )
+            
+            # Create or update referral relationship
+            referral, created = Referral.objects.get_or_create(
+                referrer=ref_code_obj.user,
+                referred_user=user,
+                referral_code=ref_code_obj,
+                defaults={
+                    'status': 'pending',
+                    'commission_rate': Decimal('25.00')
+                }
+            )
+            
+            # Create/Update subscription (placeholder - will be updated by RevenueCat webhook)
+            subscription, sub_created = Subscription.objects.update_or_create(
+                user=user,
+                defaults={
+                    'plan_type': plan_type,
+                    'status': 'trial',
+                    'revenuecat_customer_id': f"user_{user_id}",  # Placeholder
+                    'product_id': f"{plan_type}_plan",
+                    'is_active': False  # Will be activated by webhook
+                }
+            )
+            
+            return self.success_response(
+                data={
+                    'message': 'Subscription initialized',
+                    'referral_status': 'created' if created else 'existing',
+                    'plan_type': plan_type,
+                    'subscription_status': subscription.status
+                },
+                message="Subscription created successfully",
+                status_code=201
+            )
+            
+        except User.DoesNotExist:
+            return self.error_response("User not found", status_code=404)
+        except ReferralCode.DoesNotExist:
+            return self.error_response("Invalid referral code", status_code=404)
+        except Exception as e:
+            return self.error_response(
+                f"Error creating subscription: {str(e)}",
+                status_code=500
+            )
+
