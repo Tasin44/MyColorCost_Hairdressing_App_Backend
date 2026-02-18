@@ -83,7 +83,9 @@ class RetailerProfileSetupView(StandardResponseMixin, APIView):
         
         if serializer.is_valid():
             retailer_profile = serializer.save()
-            
+                # ✅ ADD THIS LINE - Auto-approve retailer
+            retailer_profile.is_approved = True
+            retailer_profile.save(update_fields=['is_approved'])
             return self.success_response(
                 data={
                     'business_name': retailer_profile.business_name,

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -70,8 +70,12 @@
             font-size: 16px;
             transition: all 0.3s;
             background: white;
+            color: #1f2937;  /* ✅ Black text color */
         }
-
+        /* ✅ Add this - ensures option text is also black */
+        select option {
+            color: #1f2937;
+        }
         input:focus, select:focus {
             outline: none;
             border-color: #EC4899;
@@ -221,7 +225,7 @@
             </form>
         </div>
     </div>
-
+            <div id="debug-services" style="display: none; color: red; padding: 10px; background: #ffe6e6; margin-bottom: 20px;"></div>
     <script>
         const token = window.location.pathname.split('/').filter(Boolean).pop();
         let bookingData = null;
@@ -232,6 +236,7 @@
             try {
                 const response = await fetch(`/appointment/book/${token}/data/`);
                 const result = await response.json();
+                console.log('Full API Response:', result); // ✅ Debug log
 
                 if (!result.success) {
             document.getElementById('loading').innerHTML = 
@@ -240,8 +245,11 @@
                 }
 
                 bookingData = result.data;
-                
-                document.getElementById('salon-name').textContent = bookingData.salon_name;
+                console.log('Booking Data:', bookingData); // ✅ Debug log
+                 console.log('Services:', bookingData.services); // ✅ Debug log
+
+                //document.getElementById('salon-name').textContent = bookingData.salon_name;
+                document.getElementById('salon-name').textContent = `${bookingData.salon_name} - Salon Services`;
                 
                 // Populate services
                 const serviceSelect = document.getElementById('service_type_id');
@@ -253,12 +261,23 @@
                 //      option.textContent = service.name;  // ✅ Use service name
                 //     serviceSelect.appendChild(option);
                 // });
-        bookingData.services.forEach(service => {
-            const option = document.createElement('option');
-            option.value = service.id;  // ✅ Use actual ID
-            option.textContent = service.name;  // ✅ Use actual name
-            serviceSelect.appendChild(option);
-        });
+        // bookingData.services.forEach(service => {
+        //     const option = document.createElement('option');
+        //     option.value = service.id;  // ✅ Use actual ID
+        //     option.textContent = service.name;  // ✅ Use actual name
+        //     serviceSelect.appendChild(option);
+        // });
+            // Clear existing options except the first one
+            serviceSelect.innerHTML = '<option value="">Choose a service</option>';
+            
+            // Check if services exist and is an array
+            if (!bookingData.services || !Array.isArray(bookingData.services)) {
+                console.error('Services data is missing or invalid:', bookingData.services);
+                document.getElementById('debug-services').style.display = 'block';
+                document.getElementById('debug-services').textContent = 
+                    'ERROR: No services found. Please contact salon owner.';
+                return;
+            }
                 // Set min date to today
                 // const today = new Date().toISOString().split('T')[0];
                 // document.getElementById('appointment_date').setAttribute('min', today);
@@ -375,9 +394,9 @@
                 appointment_date: document.getElementById('appointment_date').value,
                 appointment_time: selectedTimeSlot
             };
-
+             console.log('Sending booking data:', formData);
             try {
-                const response = await fetch(`/appointment/book/${token}/`, {
+                const response = await fetch(`/appointment/book/${token}/data/`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -386,6 +405,7 @@
                 });
 
                 const result = await response.json();
+                console.log('Server response:', result);
 
                 if (result.success) {
                     document.getElementById('success-message').style.display = 'block';
@@ -397,12 +417,17 @@
                         document.getElementById('success-message').style.display = 'none';
                     }, 5000);
                 } else {
-                    alert(result.message || 'Booking failed');
+                    // alert(result.message || 'Booking failed');
+                                // ✅ Show detailed error
+                    const errorMsg = result.message || 'Booking failed';
+                    const errorDetails = result.data ? JSON.stringify(result.data, null, 2) : '';
+                    alert(`${errorMsg}\n\nDetails:\n${errorDetails}`);
+                    console.error('Booking error:', result);
                 }
 
             } catch (error) {
-                alert('Error booking appointment');
-                console.error(error);
+                    alert('Error booking appointment: ' + error.message);
+                    console.error('Request error:', error);
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Book Appointment';
@@ -418,4 +443,514 @@
 
 
 
+ -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book Appointment - My Colour Cost</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #E879F9 0%, #F472B6 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo h1 {
+            font-size: 28px;
+            color: #EC4899;
+            font-weight: 600;
+        }
+
+        .logo span {
+            color: #9333EA;
+        }
+
+        .salon-name {
+            text-align: center;
+            font-size: 20px;
+            color: #1f2937;
+            margin-bottom: 30px;
+            font-weight: 500;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #374151;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #E5E7EB;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+            background: white;
+            color: #1f2937;
+        }
+    select option {
+        color: #1f2937 !important;  /* ✅ Add !important */
+        background: white !important;
+        padding: 10px;
+    }
+    /* ✅ Add specific styling for the service dropdown */
+    #service_type_id {
+        color: #1f2937 !important;
+    }
+    
+    #service_type_id option {
+        color: #1f2937 !important;
+        background-color: white !important;
+    }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #EC4899;
+            box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.1);
+        }
+
+        .time-slots {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .time-slot {
+            padding: 12px;
+            border: 2px solid #E5E7EB;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+            background: white;
+        }
+
+        .time-slot:hover {
+            border-color: #EC4899;
+        }
+
+        .time-slot.selected {
+            background: linear-gradient(135deg, #E879F9, #F472B6);
+            color: white;
+            border-color: #EC4899;
+        }
+
+        .time-slot.unavailable {
+            background: #F3F4F6;
+            color: #9CA3AF;
+            cursor: not-allowed;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #E879F9, #F472B6);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin-top: 10px;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .error-msg {
+            color: #EF4444;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .success-msg {
+            background: #10B981;
+            color: white;
+            padding: 16px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #EC4899;
+        }
+
+        .off-day-msg {
+            background: #FEF3C7;
+            color: #92400E;
+            padding: 12px;
+            border-radius: 10px;
+            text-align: center;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .debug-box {
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+
+        .debug-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+        }
+
+        .debug-success {
+            background: #d1fae5;
+            color: #065f46;
+            border: 1px solid #6ee7b7;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <h1>My <span>COLOUR</span> cost</h1>
+        </div>
+
+        <div id="loading" class="loading">Loading...</div>
+        
+        <!-- ✅ Debug message box -->
+        <div id="debug-services" style="display: none;"></div>
+        
+        <div id="booking-form" style="display: none;">
+            <div class="salon-name" id="salon-name"></div>
+
+            <div id="success-message" class="success-msg" style="display: none;">
+                ✓ Appointment booked successfully! Check your email for confirmation.
+            </div>
+
+            <form id="appointment-form">
+                <div class="form-group">
+                    <label for="client_name">Your Name *</label>
+                    <input type="text" id="client_name" name="client_name" required placeholder="Enter your full name">
+                </div>
+
+                <div class="form-group">
+                    <label for="client_contact">Phone Number *</label>
+                    <input type="tel" id="client_contact" name="client_contact" required placeholder="e.g., 0189237456">
+                </div>
+
+                <div class="form-group">
+                    <label for="client_email">Email Address *</label>
+                    <input type="email" id="client_email" name="client_email" required placeholder="your@email.com">
+                </div>
+
+                <div class="form-group">
+                    <label for="service_type_id">Select Service *</label>
+                    <select id="service_type_id" name="service_type_id" required>
+                        <option value="">Choose a service</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="appointment_date">Select Date *</label>
+                    <input type="date" id="appointment_date" name="appointment_date" required>
+                    <div id="off-day-message" class="off-day-msg" style="display: none;"></div>
+                </div>
+
+                <div class="form-group" id="time-slot-container" style="display: none;">
+                    <label>Select Time *</label>
+                    <div id="time-slots" class="time-slots"></div>
+                    <input type="hidden" id="appointment_time" name="appointment_time" required>
+                </div>
+
+                <button type="submit" class="submit-btn" id="submit-btn">Book Appointment</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const token = window.location.pathname.split('/').filter(Boolean).pop();
+        let bookingData = null;
+        let selectedTimeSlot = null;
+
+        // ✅ Show debug message
+        function showDebug(message, type = 'error') {
+            const debugBox = document.getElementById('debug-services');
+            debugBox.className = type === 'error' ? 'debug-box debug-error' : 'debug-box debug-success';
+            debugBox.textContent = message;
+            debugBox.style.display = 'block';
+            
+            // Auto-hide success messages after 3 seconds
+            if (type === 'success') {
+                setTimeout(() => {
+                    debugBox.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // Load booking page data
+        async function loadBookingData() {
+            try {
+                const response = await fetch(`/appointment/book/${token}/data/`);
+                const result = await response.json();
+                
+                console.log('Full API Response:', result);
+                
+                if (!result.success) {
+                    document.getElementById('loading').innerHTML = 
+                        `<div class="error-msg">${result.message}</div>`;
+                    return;
+                }
+
+                bookingData = result.data;
+                
+                console.log('Booking Data:', bookingData);
+                console.log('Services:', bookingData.services);
+                
+                // Set salon name
+                document.getElementById('salon-name').textContent = 
+                    `${bookingData.salon_name} - Salon Services`;
+                
+                // ✅ Populate services with validation
+                const serviceSelect = document.getElementById('service_type_id');
+                serviceSelect.innerHTML = '<option value="">Choose a service</option>';
+                
+                // Validate services data
+                if (!bookingData.services || !Array.isArray(bookingData.services)) {
+                    console.error('Services data is missing or invalid:', bookingData.services);
+                    showDebug('ERROR: No services found. Please contact salon owner.', 'error');
+                    return;
+                }
+                
+                if (bookingData.services.length === 0) {
+                    console.warn('Services array is empty');
+                    showDebug('ERROR: No services available. Please contact salon owner.', 'error');
+                    return;
+                }
+                
+                // Add services to dropdown
+                bookingData.services.forEach((service, index) => {
+                    console.log(`Service ${index}:`, service);
+                    
+                    const option = document.createElement('option');
+                    option.value = service.id;
+                    option.textContent = service.name;
+                    option.style.color = '#1f2937';
+                    serviceSelect.appendChild(option);
+                });
+                
+                console.log('Total services added:', serviceSelect.options.length - 1);
+                
+                // Show success message
+                if (serviceSelect.options.length > 1) {
+                    showDebug(`✓ ${serviceSelect.options.length - 1} service(s) loaded successfully`, 'success');
+                }
+                
+                // Set min date to today
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('appointment_date').setAttribute('min', today);
+                
+                // Show form
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('booking-form').style.display = 'block';
+                
+            } catch (error) {
+                console.error('Error loading booking data:', error);
+                document.getElementById('loading').innerHTML = 
+                    `<div class="error-msg">Failed to load booking page: ${error.message}</div>`;
+            }
+        }
+
+        // Check if selected date is off day
+        function isOffDay(date) {
+            const dayOfWeek = new Date(date).getDay();
+            const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            return bookingData.working_hours.off_days.includes(adjustedDay);
+        }
+
+        // Load available time slots
+        async function loadTimeSlots(date) {
+            const timeSlotsContainer = document.getElementById('time-slots');
+            const timeSlotWrapper = document.getElementById('time-slot-container');
+            const offDayMessage = document.getElementById('off-day-message');
+
+            timeSlotsContainer.innerHTML = '<div style="grid-column: 1/-1; text-align: center;">Loading...</div>';
+            timeSlotWrapper.style.display = 'block';
+            offDayMessage.style.display = 'none';
+
+            // Check if off day
+            if (isOffDay(date)) {
+                timeSlotWrapper.style.display = 'none';
+                offDayMessage.textContent = 'This day is closed. Please select another date.';
+                offDayMessage.style.display = 'block';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/appointment/available-slots/?date=${date}&user_id=${bookingData.user_id}`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    timeSlotsContainer.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #EF4444;">Failed to load time slots</div>';
+                    return;
+                }
+
+                const slots = result.data.available_slots;
+                timeSlotsContainer.innerHTML = '';
+
+                if (slots.length === 0) {
+                    timeSlotsContainer.innerHTML = '<div style="grid-column: 1/-1; text-align: center;">No slots available</div>';
+                    return;
+                }
+
+                slots.forEach(slot => {
+                    const slotDiv = document.createElement('div');
+                    slotDiv.className = 'time-slot';
+                    slotDiv.textContent = slot.time_slot;
+
+                    if (!slot.is_available) {
+                        slotDiv.classList.add('unavailable');
+                    } else {
+                        slotDiv.addEventListener('click', () => selectTimeSlot(slot.time_slot, slotDiv));
+                    }
+
+                    timeSlotsContainer.appendChild(slotDiv);
+                });
+
+            } catch (error) {
+                timeSlotsContainer.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #EF4444;">Error loading slots</div>';
+                console.error(error);
+            }
+        }
+
+        // Select time slot
+        function selectTimeSlot(time, element) {
+            document.querySelectorAll('.time-slot').forEach(slot => {
+                slot.classList.remove('selected');
+            });
+            element.classList.add('selected');
+            selectedTimeSlot = time;
+            document.getElementById('appointment_time').value = time;
+        }
+
+        // Handle date change
+        document.getElementById('appointment_date').addEventListener('change', (e) => {
+            const selectedDate = e.target.value;
+            if (selectedDate) {
+                loadTimeSlots(selectedDate);
+            }
+        });
+
+        // Handle form submission
+        document.getElementById('appointment-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // Validate service selection
+            const serviceId = document.getElementById('service_type_id').value;
+            if (!serviceId) {
+                alert('Please select a service');
+                return;
+            }
+
+            if (!selectedTimeSlot) {
+                alert('Please select a time slot');
+                return;
+            }
+
+            const submitBtn = document.getElementById('submit-btn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Booking...';
+
+            const formData = {
+                client_name: document.getElementById('client_name').value,
+                client_contact: document.getElementById('client_contact').value,
+                client_email: document.getElementById('client_email').value,
+                service_type_id: parseInt(serviceId),
+                appointment_date: document.getElementById('appointment_date').value,
+                appointment_time: selectedTimeSlot
+            };
+            
+            console.log('Sending booking data:', formData);
+            
+            try {
+                const response = await fetch(`/appointment/book/${token}/data/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+                console.log('Server response:', result);
+
+                if (result.success) {
+                    document.getElementById('success-message').style.display = 'block';
+                    document.getElementById('appointment-form').reset();
+                    document.getElementById('time-slot-container').style.display = 'none';
+                    selectedTimeSlot = null;
+
+                    // Scroll to top to show success message
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+                    setTimeout(() => {
+                        document.getElementById('success-message').style.display = 'none';
+                    }, 5000);
+                } else {
+                    const errorMsg = result.message || 'Booking failed';
+                    const errorDetails = result.data ? JSON.stringify(result.data, null, 2) : '';
+                    alert(`${errorMsg}\n\nDetails:\n${errorDetails}`);
+                    console.error('Booking error:', result);
+                }
+
+            } catch (error) {
+                alert('Error booking appointment: ' + error.message);
+                console.error('Request error:', error);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Book Appointment';
+            }
+        });
+
+        // Initialize
+        loadBookingData();
+    </script>
+</body>
+</html>

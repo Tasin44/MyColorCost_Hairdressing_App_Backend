@@ -5,7 +5,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from django.conf import settings
 
-BASE_URL = "http://10.10.12.14:8000"
+# BASE_URL = "http://10.10.12.14:8000"
 
 def generate_mix_pdf(mix):
     folder = os.path.join(settings.MEDIA_ROOT, "mix_pdfs")
@@ -62,4 +62,4 @@ def generate_mix_pdf(mix):
     elements.append(table)
     doc.build(elements)
 
-    return f"{BASE_URL}/media/mix_pdfs/{file_name}"
+    return f"{settings.BASE_URL}/media/mix_pdfs/{file_name}"  # ✅ Changed

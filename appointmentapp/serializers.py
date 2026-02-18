@@ -469,7 +469,9 @@ class AppointmentSelfBookingSerializer(serializers.ModelSerializer):
     """
     token = serializers.CharField(write_only=True, help_text="Appointment URL token")
     
-    service_type_id = serializers.IntegerField(write_only=True, source='service_type')
+    #ervice_type_id = serializers.IntegerField(write_only=True, source='service_type')
+    # ✅ REMOVE source='service_type' - let it use the field name as-is
+    service_type_id = serializers.IntegerField(write_only=True)
     '''
     Error: 
     if I pass string name" haircut " to service_type: 
@@ -508,9 +510,11 @@ class AppointmentSelfBookingSerializer(serializers.ModelSerializer):
         self.context['appointment_url'] = appointment_url
         return value
     
-    def validate_service_type(self, value):
-        """Validate service type exists for this owner"""
-        # Will be validated in validate() after we have the owner
+    def validate_appointment_date(self, value):
+        """Validate date is not in the past"""
+        today = timezone.now().date()
+        if value < today:
+            raise serializers.ValidationError("Cannot book appointments in the past")
         return value
     
     def validate_appointment_date(self, value):
@@ -518,6 +522,7 @@ class AppointmentSelfBookingSerializer(serializers.ModelSerializer):
         today = timezone.now().date()
         if value < today:
             raise serializers.ValidationError("Cannot book appointments in the past")
+
         return value
     
     def validate_appointment_time(self, value):
@@ -528,8 +533,81 @@ class AppointmentSelfBookingSerializer(serializers.ModelSerializer):
             )
         return value
     
+    # def validate(self, data):
+    #     """Cross-field validation"""
+    #     appointment_url = self.context.get('appointment_url')
+    #     if not appointment_url:
+    #         raise serializers.ValidationError("Invalid booking URL")
+        
+    #     owner = appointment_url.user
+    #     appointment_date = data['appointment_date']
+    #     appointment_time = data['appointment_time']
+    #     # service_type = data['service_type']
+    #     #service_type_id = data['service_type']  # Note: it's already mapped to 'service_type' via source
+        
+    #     service_type_id = data.pop('service_type')  # Remove from data
+    #     # Validate service type
+    #     '''
+    #     if not ServiceType.objects.filter(user=owner, name=service_type).exists():
+    #         raise serializers.ValidationError({
+    #             'service_type': "Invalid service type selected"
+    #         })
+
+    #     #Previously it was name based input for sevice type, but it's a foreignkey on the model, thats why getting error
+    #     '''
+
+    #     try:
+    #         service_type = ServiceType.objects.get(id=service_type_id, user=owner)
+    #         data['service_type'] = service_type  # Replace ID with object
+    #     except ServiceType.DoesNotExist:
+    #         raise serializers.ValidationError({
+    #             'service_type_id': "Invalid service type selected"
+    #         })
+        
+    #     # Check working hours
+    #     if not hasattr(owner, 'working_hours'):
+    #         raise serializers.ValidationError("Booking is currently unavailable")
+        
+    #     working_hours = owner.working_hours
+        
+    #     # Check if working day
+    #     if not working_hours.is_working_day(appointment_date):
+    #         raise serializers.ValidationError({
+    #             'appointment_date': "Selected date is not available"
+    #         })
+        
+    #     # Check if time is within working hours
+    #     if not (working_hours.start_time <= appointment_time < working_hours.end_time):
+    #         raise serializers.ValidationError({
+    #             'appointment_time': f"Please select a time between {working_hours.start_time} and {working_hours.end_time}"
+    #         })
+        
+    #     # Check slot availability
+    #     available, slot = TimeSlotBooking.is_slot_available(
+    #         owner, appointment_date, appointment_time
+    #     )
+        
+    #     if not available:
+    #         raise serializers.ValidationError({
+    #             'appointment_time': "This time slot is fully booked. Please select another time."
+    #         })
+        
+    #     # Store for create()
+    #     self.context['owner'] = owner
+    #     self.context['time_slot'] = slot
+
+    #     self.context['service_type'] = service_type
+        
+    #     return data
+
     def validate(self, data):
         """Cross-field validation"""
+        # ✅ Add logging
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"Validating data: {data}")
+        
         appointment_url = self.context.get('appointment_url')
         if not appointment_url:
             raise serializers.ValidationError("Invalid booking URL")
@@ -537,42 +615,40 @@ class AppointmentSelfBookingSerializer(serializers.ModelSerializer):
         owner = appointment_url.user
         appointment_date = data['appointment_date']
         appointment_time = data['appointment_time']
-        # service_type = data['service_type']
-        #service_type_id = data['service_type']  # Note: it's already mapped to 'service_type' via source
         
-        service_type_id = data.pop('service_type_id')  # Remove from data
+        service_type_id = data.pop('service_type_id')
+        
+        logger.info(f"Owner: {owner.email}, Date: {appointment_date}, Time: {appointment_time}, Service ID: {service_type_id}")
+        
         # Validate service type
-        '''
-        if not ServiceType.objects.filter(user=owner, name=service_type).exists():
-            raise serializers.ValidationError({
-                'service_type': "Invalid service type selected"
-            })
-
-        #Previously it was name based input for sevice type, but it's a foreignkey on the model, thats why getting error
-        '''
-
         try:
             service_type = ServiceType.objects.get(id=service_type_id, user=owner)
-            #data['service_type'] = service_type  # Replace ID with object
+            data['service_type'] = service_type
+            logger.info(f"Service type found: {service_type.name}")
         except ServiceType.DoesNotExist:
+            logger.error(f"Service type {service_type_id} not found for owner {owner.email}")
             raise serializers.ValidationError({
                 'service_type_id': "Invalid service type selected"
             })
         
         # Check working hours
         if not hasattr(owner, 'working_hours'):
+            logger.error(f"Owner {owner.email} has no working hours")
             raise serializers.ValidationError("Booking is currently unavailable")
         
         working_hours = owner.working_hours
+        logger.info(f"Working hours: {working_hours.start_time} - {working_hours.end_time}")
         
         # Check if working day
         if not working_hours.is_working_day(appointment_date):
+            logger.warning(f"Date {appointment_date} is not a working day")
             raise serializers.ValidationError({
                 'appointment_date': "Selected date is not available"
             })
         
         # Check if time is within working hours
         if not (working_hours.start_time <= appointment_time < working_hours.end_time):
+            logger.warning(f"Time {appointment_time} outside working hours")
             raise serializers.ValidationError({
                 'appointment_time': f"Please select a time between {working_hours.start_time} and {working_hours.end_time}"
             })
@@ -582,6 +658,8 @@ class AppointmentSelfBookingSerializer(serializers.ModelSerializer):
             owner, appointment_date, appointment_time
         )
         
+        logger.info(f"Slot availability: {available}, Current bookings: {slot.current_bookings}/{slot.max_capacity}")
+        
         if not available:
             raise serializers.ValidationError({
                 'appointment_time': "This time slot is fully booked. Please select another time."
@@ -590,11 +668,9 @@ class AppointmentSelfBookingSerializer(serializers.ModelSerializer):
         # Store for create()
         self.context['owner'] = owner
         self.context['time_slot'] = slot
-
         self.context['service_type'] = service_type
         
         return data
-    
     @transaction.atomic
     def create(self, validated_data):
         """Create self-booked appointment"""

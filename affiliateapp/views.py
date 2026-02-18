@@ -466,6 +466,9 @@ class CreateSubscriptionView(StandardResponseMixin, APIView):
         "subscription_plan": "monthly" or "yearly"
     }
     """
+    """
+    POST: Create subscription with referral tracking
+    """
     permission_classes = [IsAuthenticated]
     
     @transaction.atomic
@@ -480,48 +483,50 @@ class CreateSubscriptionView(StandardResponseMixin, APIView):
             )
         
         user_id = serializer.validated_data['user_id']
-        referral_code = serializer.validated_data['referral_code']
+        referral_code = serializer.validated_data.get('referral_code')  # ✅ Use .get() instead of ['referral_code']
         plan_type = serializer.validated_data['subscription_plan']
         
         try:
-            # Get user and referral code
             user = User.objects.get(id=user_id)
-            ref_code_obj = ReferralCode.objects.get(code=referral_code)
             
-            # Check if user is trying to use their own code
-            if ref_code_obj.user == user:
-                return self.error_response(
-                    "Cannot use your own referral code",
-                    status_code=400
+            # ✅ Only process referral if code is provided
+            if referral_code:
+                ref_code_obj = ReferralCode.objects.get(code=referral_code)
+                
+                # Check if user is trying to use their own code
+                if ref_code_obj.user == user:
+                    return self.error_response(
+                        "Cannot use your own referral code",
+                        status_code=400
+                    )
+                
+                # Create or update referral relationship
+                referral, created = Referral.objects.get_or_create(
+                    referrer=ref_code_obj.user,
+                    referred_user=user,
+                    referral_code=ref_code_obj,
+                    defaults={
+                        'status': 'pending',
+                        'commission_rate': Decimal('25.00')
+                    }
                 )
             
-            # Create or update referral relationship
-            referral, created = Referral.objects.get_or_create(
-                referrer=ref_code_obj.user,
-                referred_user=user,
-                referral_code=ref_code_obj,
-                defaults={
-                    'status': 'pending',
-                    'commission_rate': Decimal('25.00')
-                }
-            )
-            
-            # Create/Update subscription (placeholder - will be updated by RevenueCat webhook)
+            # Create/Update subscription
             subscription, sub_created = Subscription.objects.update_or_create(
                 user=user,
                 defaults={
                     'plan_type': plan_type,
                     'status': 'trial',
-                    'revenuecat_customer_id': f"user_{user_id}",  # Placeholder
+                    'revenuecat_customer_id': f"user_{user_id}",
                     'product_id': f"{plan_type}_plan",
-                    'is_active': False  # Will be activated by webhook
+                    'is_active': False
                 }
             )
             
             return self.success_response(
                 data={
                     'message': 'Subscription initialized',
-                    'referral_status': 'created' if created else 'existing',
+                    'referral_used': bool(referral_code),  # ✅ Indicate if referral was used
                     'plan_type': plan_type,
                     'subscription_status': subscription.status
                 },
@@ -538,4 +543,3 @@ class CreateSubscriptionView(StandardResponseMixin, APIView):
                 f"Error creating subscription: {str(e)}",
                 status_code=500
             )
-

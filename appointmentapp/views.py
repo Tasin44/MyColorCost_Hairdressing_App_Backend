@@ -28,6 +28,8 @@ from .serializers import (
 from clientapp.models import Client
 from mixapp.models import Mix
 from django.shortcuts import render
+import logging
+logger = logging.getLogger(__name__)
 
 class StandardResponseMixin:
     """Mixin for consistent API responses"""
@@ -491,53 +493,114 @@ class AppointmentCreateView(StandardResponseMixin, APIView):
       #---------------------------------------------------------------------------------/
 
 
-class AppointmentSelfBookingView(StandardResponseMixin, APIView):
-    """
-    Client self-booking endpoint (no authentication required).
-    Client accesses via unique URL token.
+# class AppointmentSelfBookingView(StandardResponseMixin, APIView):
+#     """
+#     Client self-booking endpoint (no authentication required).
+#     Client accesses via unique URL token.
     
-    POST /appointment/book/{token}/
-    Body: {
-        "client_name": "John Doe",
-        "client_contact": "+1234567890",
-        "client_email": "john@example.com",
-        "appointment_date": "2024-12-25",
-        "appointment_time": "10:00",
-        "service_type": "Haircut"
-    }
-    """
+#     POST /appointment/book/{token}/
+#     Body: {
+#         "client_name": "John Doe",
+#         "client_contact": "+1234567890",
+#         "client_email": "john@example.com",
+#         "appointment_date": "2024-12-25",
+#         "appointment_time": "10:00",
+#         "service_type": "Haircut"
+#     }
+#     """
+#     permission_classes = [AllowAny]
+    
+#     @transaction.atomic
+#     def post(self, request, token):
+#         """Create self-booked appointment"""
+#         # ✅ Log incoming request
+#         logger.info(f"Self-booking attempt with token: {token}")
+#         logger.info(f"Request data: {request.data}")
+        
+#         # Add token to request data
+#         data = request.data.copy()
+#         data['token'] = token
+        
+#         serializer = AppointmentSelfBookingSerializer(
+#             data=data,
+#             context={'request': request}
+#         )
+        
+#         # ✅ Check validation errors in detail
+#         if not serializer.is_valid():
+#             logger.error(f"Validation errors: {serializer.errors}")
+#             return self.error_response(
+#                 "Failed to book appointment",
+#                 status_code=400,
+#                 data=serializer.errors  # ✅ This will show exact error
+#             )
+        
+#         try:
+#             appointment = serializer.save()
+            
+#             detail_serializer = AppointmentDetailSerializer(
+#                 appointment,
+#                 context={'request': request}
+#             )
+            
+#             logger.info(f"Appointment created successfully: {appointment.id}")
+            
+#             return self.success_response(
+#                 data=detail_serializer.data,
+#                 message="Appointment booked successfully! Confirmation email sent.",
+#                 status_code=201
+#             )
+#         except Exception as e:
+#             logger.exception(f"Error creating appointment: {str(e)}")
+#             return self.error_response(
+#                 f"Error: {str(e)}",
+#                 status_code=500
+#             )
+class AppointmentSelfBookingView(StandardResponseMixin, APIView):
     permission_classes = [AllowAny]
     
-    @transaction.atomic
-    def post(self, request, token):
-        """Create self-booked appointment"""
-        # Add token to request data
-        data = request.data.copy()
-        data['token'] = token
-        
-        serializer = AppointmentSelfBookingSerializer(
-            data=data,
-            context={'request': request}
-        )
-        
-        if serializer.is_valid():
-            appointment = serializer.save()
-            
-            detail_serializer = AppointmentDetailSerializer(
-                appointment,
-                context={'request': request}
+    def get(self, request, token):
+        """Get booking page info"""
+        try:
+            appointment_url = AppointmentURL.objects.select_related('user').get(
+                token=token,
+                is_active=True
             )
-            
-            return self.success_response(
-                data=detail_serializer.data,
-                message="Appointment booked successfully! Confirmation email sent.",
-                status_code=201
+        except AppointmentURL.DoesNotExist:
+            return self.error_response(
+                "Invalid or inactive booking URL",
+                status_code=404
             )
         
-        return self.error_response(
-            "Failed to book appointment",
-            status_code=400,
-            data=serializer.errors
+        owner = appointment_url.user
+        
+        # ✅ CHECK working hours FIRST
+        if not hasattr(owner, 'working_hours'):
+            return self.error_response(
+                "Booking unavailable - working hours not set",
+                status_code=400
+            )
+        
+        wh = owner.working_hours
+        working_hours_data = {
+            'start_time': wh.start_time.strftime('%H:%M'),
+            'end_time': wh.end_time.strftime('%H:%M'),
+            'off_days': wh.get_off_days_list()
+        }
+        
+        # ✅ FIX: Return services as list of dicts with id and name
+        services = ServiceType.objects.filter(user=owner).values('id', 'name')
+        
+        logger.info(f"Services for {owner.email}: {list(services)}")
+        
+        return self.success_response(
+            data={
+                'salon_name': owner.name or owner.email,
+                'user_id': owner.id,
+                'services': list(services),  # ✅ This returns [{'id': 1, 'name': 'Haircut'}, ...]
+                'working_hours': working_hours_data
+            },
+            message="Booking information retrieved successfully"
         )
     #I want to add it s logic, is it necessary?
     #Same as above - DON'T ADD IT. The serializer handles everything. 
@@ -692,13 +755,24 @@ class AppointmentSelfBookingView(StandardResponseMixin, APIView):
         
         # Get services
         services = ServiceType.objects.filter(user=owner).values_list('name', flat=True)
-        
+        logger.info(f"Services for {owner.email}: {list(services)}")
+
         return self.success_response(
+            # data={
+            #     'salon_name': owner.name or owner.email,
+            #     'services': list(services),
+            #     'working_hours': working_hours_data,
+            #     'user_id': str(owner.id)
+            # },
             data={
                 'salon_name': owner.name or owner.email,
-                'services': list(services),
-                'working_hours': working_hours_data,
-                'user_id': str(owner.id)
+                'user_id': owner.id,
+                'services': list(services),  # ✅ Convert QuerySet to list
+                'working_hours': {
+                    'start_time': owner.working_hours.start_time.strftime('%H:%M'),
+                    'end_time': owner.working_hours.end_time.strftime('%H:%M'),
+                    'off_days': owner.working_hours.get_off_days_list()
+                }
             },
             message="Booking information retrieved successfully"
         )

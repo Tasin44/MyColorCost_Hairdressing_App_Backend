@@ -186,7 +186,8 @@ class AppointmentURL(models.Model):
         """Generate full booking URL"""
         # In production, replace with actual domain
         #return f"http://10.10.12.14:8000/book/{self.token}"
-        return f"http://10.10.12.14:8000/appointment/book/{self.token}/" 
+        #return f"http://10.10.12.14:8000/appointment/book/{self.token}/" 
+        return f"{settings.BASE_URL}/appointment/book/{self.token}/"  # ✅ Changed
 
 
 class Appointment(models.Model):

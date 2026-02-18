@@ -311,7 +311,7 @@ class SignupSerializer(serializers.Serializer):
     '''
     @staticmethod
     def send_otp_email(email, otp_code):
-        subject = "Your OTP Code for Verification in Fixa"
+        subject = "Your OTP Code for Verification in MyColorCos"
         message = f"Your OTP code is: {otp_code}\nValid for 10 minutes."
         send_mail(subject, message, 'noreply@yourdomain.com', [email])
 
