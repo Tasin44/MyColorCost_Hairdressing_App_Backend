@@ -2376,8 +2376,128 @@ class UserInventoryProductsView(StandardResponseMixin, APIView):
 
 
 
+#============================================================================================================================
 
 
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from .serializers import FinancialOverviewSerializer
+
+class FinancialOverviewView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """
+        GET /api/mix/financial-overview/?months=12
+        GET /api/mix/financial-overview/?month=1&year=2026  (January 2026)
+        GET /api/mix/financial-overview/?month=2&year=2026  (February 2026)
+        
+        Returns monthly profit from mixes and costs from product checkout
+        
+        Query params:
+        - months: number of months to retrieve (default: 12, max: 24) - for range
+        - month: specific month (1-12) - for single month
+        - year: specific year (required if month is provided)
+        
+        Response:
+        {
+            "success": true,
+            "period": "February 2026" or "Last 12 months",
+            "overview": [
+                {
+                    "month": "February",
+                    "year": 2026,
+                    "total_profit": 1500.00,
+                    "total_cost": 800.00,
+                    "net_amount": 700.00
+                }
+            ]
+        }
+        """
+        '''
+        try:
+            months = int(request.query_params.get('months', 12))
+            
+            if months > 24:
+                months = 24
+            if months < 1:
+                months = 1
+            
+            serializer = FinancialOverviewSerializer()
+            overview_data = serializer.get_overview_data(request.user, months)
+            
+            return Response({
+                'success': True,
+                'period': f'Last {months} months',
+                'overview': overview_data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        '''
 
 
+        try:
+            # Check if specific month filter is requested
+            month = request.query_params.get('month')
+            year = request.query_params.get('year')
+            
+            # serializer = FinancialOverviewSerializer()
+            # ✅ FIX: Import the helper functions
+            from .serializers import get_single_month_overview, get_multiple_months_overview
+            
+            if month and year:
+                # ✅ Filter by specific month
+                try:
+                    month_num = int(month)
+                    year_num = int(year)
+                    
+                    if month_num < 1 or month_num > 12:
+                        return Response({
+                            'success': False,
+                            'error': 'Month must be between 1 and 12'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    # overview_data = serializer.get_single_month_data(
+                    #     request.user, 
+                    #     month_num, 
+                    #     year_num
+                    # )
+                    overview_data = get_single_month_overview(request.user, month_num, year_num)
+                    period = f"{overview_data[0]['month']} {year_num}" if overview_data else f"Month {month_num}, {year_num}"
+                    
+                except ValueError:
+                    return Response({
+                        'success': False,
+                        'error': 'Invalid month or year format'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                # ✅ Get range of months
+                months = int(request.query_params.get('months', 12))
+                
+                if months > 24:
+                    months = 24
+                if months < 1:
+                    months = 1
+                
+                #overview_data = serializer.get_overview_data(request.user, months)
+                overview_data = get_multiple_months_overview(request.user, months)
+                period = f'Last {months} months'
+            
+            return Response({
+                'success': True,
+                'period': period,
+                'overview': overview_data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

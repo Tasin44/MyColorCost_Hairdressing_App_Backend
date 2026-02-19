@@ -926,10 +926,297 @@ class ExpenseSerializer(serializers.ModelSerializer):
 
 
 
+#=========================================================================================================================================================
+#Expense overview
+
+
+from rest_framework import serializers
+from django.db.models import Sum, Q
+from django.utils import timezone
+from datetime import timedelta
+from decimal import Decimal
+from .models import Mix, ShoppingCart
+from paymentapp.models import Payment
+
+class MonthlyOverviewSerializer(serializers.Serializer):
+    month = serializers.CharField()
+    year = serializers.IntegerField()
+    total_profit = serializers.DecimalField(max_digits=10, decimal_places=2)
+    total_cost = serializers.DecimalField(max_digits=10, decimal_places=2)
+    net_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+# class FinancialOverviewSerializer(serializers.Serializer):
+#     overview = MonthlyOverviewSerializer(many=True, read_only=True)
+#     period = serializers.CharField(read_only=True)
+    
+    '''
+        def get_overview_data(self, user, months=12):
+        overview_data = []
+        current_date = timezone.now()
+        
+        for i in range(months):
+            # Calculate month start and end dates
+            target_date = current_date - timedelta(days=30 * i)
+            month_start = target_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            
+            if target_date.month == 12:
+                month_end = target_date.replace(year=target_date.year + 1, month=1, day=1)
+            else:
+                month_end = target_date.replace(month=target_date.month + 1, day=1)
+            
+            # ✅ Get profit from Mix creation
+            mix_filter = Q(created_at__gte=month_start, created_at__lt=month_end)
+            
+            if user.role == 'owner':
+                # Owner sees their own mixes + staff mixes
+                #mix_filter &= Q(user=user) | Q(sub_user__main_user=user, sub_user__is_active=True) #❌Owner only sees their own mixes (Mix.objects.filter(user=user) already includes mixes created by staff because user field stores the owner)
+                # ✅ FIX: Remove sub_user__is_active (field doesn't exist)
+                # Owner sees their own mixes + all staff mixes
+                mix_filter &= Q(user=user)  # Owner's mixes only
+            else:
+                # Staff/self-employed see only their own mixes
+                mix_filter &= Q(user=user)
+            
+            total_profit = Mix.objects.filter(mix_filter).aggregate(
+                total=Sum('profit')
+            )['total'] or Decimal('0.00')
+            
+            # ✅ Get costs from Payment (checkout)
+            payment_filter = Q(
+                created_at__gte=month_start,
+                created_at__lt=month_end,
+                status='completed'  # Only count completed payments
+            )
+            
+            if user.role == 'owner':
+                # Owner sees their own payments + staff payments
+                #❌payment_filter &= Q(user=user) | Q(user__sub_user__main_user=user, user__sub_user__is_active=True) #Payment filter - Staff can't make payments (only owners buy products), so both see their own payments
+                # ✅ FIX: Owner sees only their own payments
+                payment_filter &= Q(user=user)
+            else:
+                # Staff/self-employed see only their own payments
+                payment_filter &= Q(user=user)
+            
+            total_cost = Payment.objects.filter(payment_filter).aggregate(
+                total=Sum('total_amount')
+            )['total'] or Decimal('0.00')
+            
+            overview_data.append({
+                'month': target_date.strftime('%B'),
+                'year': target_date.year,
+                'total_profit': float(total_profit),
+                'total_cost': float(total_cost),
+                'net_amount': float(total_profit - total_cost)
+            })
+        
+        return overview_data
+
+
+    '''
+    # def get_single_month_data(self, user, month, year):
+    #     """
+    #     Get data for a specific month and year
+    #     """
+    #     from django.utils import timezone
+    #     from datetime import datetime
+        
+    #     # Create month start and end dates
+    #     month_start = timezone.make_aware(datetime(year, month, 1))
+        
+    #     if month == 12:
+    #         month_end = timezone.make_aware(datetime(year + 1, 1, 1))
+    #     else:
+    #         month_end = timezone.make_aware(datetime(year, month + 1, 1))
+        
+    #     # Get profit from Mix creation
+    #     mix_filter = Q(created_at__gte=month_start, created_at__lt=month_end)
+        
+    #     if user.role == 'owner':
+    #         mix_filter &= Q(user=user)
+    #     else:
+    #         mix_filter &= Q(user=user)
+        
+    #     total_profit = Mix.objects.filter(mix_filter).aggregate(
+    #         total=Sum('profit')
+    #     )['total'] or Decimal('0.00')
+        
+    #     # Get costs from Payment (checkout)
+    #     payment_filter = Q(
+    #         created_at__gte=month_start,
+    #         created_at__lt=month_end,
+    #         status='completed'
+    #     )
+        
+    #     if user.role == 'owner':
+    #         payment_filter &= Q(user=user)
+    #     else:
+    #         payment_filter &= Q(user=user)
+        
+    #     total_cost = Payment.objects.filter(payment_filter).aggregate(
+    #         total=Sum('total_amount')
+    #     )['total'] or Decimal('0.00')
+        
+    #     month_names = [
+    #         'January', 'February', 'March', 'April', 'May', 'June',
+    #         'July', 'August', 'September', 'October', 'November', 'December'
+    #     ]
+        
+    #     return [{
+    #         'month': month_names[month - 1],
+    #         'year': year,
+    #         'total_profit': float(total_profit),
+    #         'total_cost': float(total_cost),
+    #         'net_amount': float(total_profit - total_cost)
+    #     }]
+    
+    # def get_overview_data(self, user, months=12):
+    #     """
+    #     Get monthly profit from mixes and costs from checkout payments
+    #     """
+    #     overview_data = []
+    #     current_date = timezone.now()
+        
+    #     for i in range(months):
+    #         # Calculate month start and end dates
+    #         target_date = current_date - timedelta(days=30 * i)
+    #         month_start = target_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            
+    #         if target_date.month == 12:
+    #             month_end = target_date.replace(year=target_date.year + 1, month=1, day=1)
+    #         else:
+    #             month_end = target_date.replace(month=target_date.month + 1, day=1)
+            
+    #         # Get profit from Mix creation
+    #         mix_filter = Q(created_at__gte=month_start, created_at__lt=month_end)
+            
+    #         if user.role == 'owner':
+    #             mix_filter &= Q(user=user)
+    #         else:
+    #             mix_filter &= Q(user=user)
+            
+    #         total_profit = Mix.objects.filter(mix_filter).aggregate(
+    #             total=Sum('profit')
+    #         )['total'] or Decimal('0.00')
+            
+    #         # Get costs from Payment (checkout)
+    #         payment_filter = Q(
+    #             created_at__gte=month_start,
+    #             created_at__lt=month_end,
+    #             status='completed'
+    #         )
+            
+    #         if user.role == 'owner':
+    #             payment_filter &= Q(user=user)
+    #         else:
+    #             payment_filter &= Q(user=user)
+            
+    #         total_cost = Payment.objects.filter(payment_filter).aggregate(
+    #             total=Sum('total_amount')
+    #         )['total'] or Decimal('0.00')
+            
+    #         overview_data.append({
+    #             'month': target_date.strftime('%B'),
+    #             'year': target_date.year,
+    #             'total_profit': float(total_profit),
+    #             'total_cost': float(total_cost),
+    #             'net_amount': float(total_profit - total_cost)
+    #         })
+        
+    #     return overview_data
 
 
 
+# ✅ Move these functions OUTSIDE the serializer class
+def get_single_month_overview(user, month, year):
+    """Get data for a specific month and year"""
+    from django.utils import timezone
+    from datetime import datetime
+    
+    month_start = timezone.make_aware(datetime(year, month, 1))
+    
+    if month == 12:
+        month_end = timezone.make_aware(datetime(year + 1, 1, 1))
+    else:
+        month_end = timezone.make_aware(datetime(year, month + 1, 1))
+    
+    mix_filter = Q(created_at__gte=month_start, created_at__lt=month_end)
+    mix_filter &= Q(user=user)
+    
+    total_profit = Mix.objects.filter(mix_filter).aggregate(
+        total=Sum('profit')
+    )['total'] or Decimal('0.00')
+    
+    payment_filter = Q(
+        created_at__gte=month_start,
+        created_at__lt=month_end,
+        status='completed'
+    )
+    payment_filter &= Q(user=user)
+    
+    total_cost = Payment.objects.filter(payment_filter).aggregate(
+        total=Sum('total_amount')
+    )['total'] or Decimal('0.00')
+    
+    month_names = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ]
+    
+    return [{
+        'month': month_names[month - 1],
+        'year': year,
+        'total_profit': float(total_profit),
+        'total_cost': float(total_cost),
+        'net_amount': float(total_profit - total_cost)
+    }]
 
+
+def get_multiple_months_overview(user, months=12):
+    """Get monthly profit from mixes and costs from checkout payments"""
+    overview_data = []
+    current_date = timezone.now()
+    
+    for i in range(months):
+        target_date = current_date - timedelta(days=30 * i)
+        month_start = target_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        if target_date.month == 12:
+            month_end = target_date.replace(year=target_date.year + 1, month=1, day=1)
+        else:
+            month_end = target_date.replace(month=target_date.month + 1, day=1)
+        
+        mix_filter = Q(created_at__gte=month_start, created_at__lt=month_end)
+        mix_filter &= Q(user=user)
+        
+        total_profit = Mix.objects.filter(mix_filter).aggregate(
+            total=Sum('profit')
+        )['total'] or Decimal('0.00')
+        
+        payment_filter = Q(
+            created_at__gte=month_start,
+            created_at__lt=month_end,
+            status='completed'
+        )
+        payment_filter &= Q(user=user)
+        
+        total_cost = Payment.objects.filter(payment_filter).aggregate(
+            total=Sum('total_amount')
+        )['total'] or Decimal('0.00')
+        
+        overview_data.append({
+            'month': target_date.strftime('%B'),
+            'year': target_date.year,
+            'total_profit': float(total_profit),
+            'total_cost': float(total_cost),
+            'net_amount': float(total_profit - total_cost)
+        })
+    
+    return overview_data
+
+
+class FinancialOverviewSerializer(serializers.Serializer):
+    overview = MonthlyOverviewSerializer(many=True, read_only=True)
+    period = serializers.CharField(read_only=True)
 
 
 

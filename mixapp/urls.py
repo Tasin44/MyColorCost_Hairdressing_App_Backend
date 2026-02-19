@@ -21,7 +21,7 @@ from .views import (
     ScanBarcodeView, ManualProductEntryView,
     UpdateScannedProductView,ProductScanHistoryView,
     AddToCartView, ViewCartView, RemoveFromCartView, UpdateCartItemView,
-    ExpenseViewSet,RetailerProductsListView,UserInventoryProductsView
+    ExpenseViewSet,RetailerProductsListView,UserInventoryProductsView,FinancialOverviewView
 )
  
 app_name = 'mixapp'
@@ -81,6 +81,9 @@ urlpatterns = [
     
     # ✅ NEW: User inventory (scanned + manual)
     path('user-inventory/', UserInventoryProductsView.as_view(), name='user-inventory'),
+
+    #===========================================================
+    path('financial-overview/', FinancialOverviewView.as_view(), name='financial-overview'),
 
 ]
 

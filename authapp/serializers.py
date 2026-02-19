@@ -354,7 +354,10 @@ class LoginSerializer(serializers.Serializer):
             user = User.objects.get(email=email, verified=True)
         except User.DoesNotExist:
             raise serializers.ValidationError("Invalid email or user not verified.")
-        
+
+        # ✅ Allow superusers to bypass verification check
+        # if not user.is_superuser and not user.verified:
+        #     raise serializers.ValidationError("Invalid email or user not verified.")
         # Check login method
         if google_id:
             if user.google_id != google_id:
