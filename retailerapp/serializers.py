@@ -43,6 +43,9 @@ class RetailerProfileSetupSerializer(serializers.ModelSerializer):
             'business_name', 'delivery_charge',
             'free_delivery_threshold', 'delivery_areas','api_key'
         ]
+        extra_kwargs = {
+            'api_key': {'required': False, 'allow_blank': True, 'allow_null': True}  # ✅ ADD THIS
+        }
     
     def validate_delivery_areas(self, value):
         """Ensure at least one delivery area"""
@@ -51,13 +54,21 @@ class RetailerProfileSetupSerializer(serializers.ModelSerializer):
                 "At least one delivery area is required"
             )
         return value
-    
+    # ✅ ADD THIS METHOD
+    def validate_api_key(self, value):
+        """Convert empty string to None to avoid unique constraint issues"""
+        if not value or value.strip() == "":
+            return None
+        return value.strip()
     @transaction.atomic
     def create(self, validated_data):
         """Create retailer profile with delivery areas"""
         delivery_areas_data = validated_data.pop('delivery_areas')
         user = self.context['request'].user
-        
+
+        # ✅ Set is_approved=True during creation
+        validated_data['is_approved'] = True
+
         # Create retailer profile
         retailer_profile = RetailerProfile.objects.create(
             user=user,

@@ -304,10 +304,16 @@ class UserProductListView(StandardResponseMixin, APIView):
             owner = user
 
         # Base queryset with optimization
-        queryset = UserProduct.objects.filter(user=user).select_related(
+        queryset = UserProduct.objects.filter(user=owner).select_related(
             'product'
         )
- 
+        '''
+        if I use here user=user, it'll cause issue on the product list, the updated weight won't be visible there, because during updating, I'm doing update for owner(even if the user is staff)
+        If you're staff, user != owner, so after updating with owner, the GET still queries with user (the staff user) and finds nothing updated.
+
+        this  is the place in scanproductview
+        user_product = UserProduct.objects.get(user=owner, product=shop_product)
+        '''
         # Filter by availability
         available_only = request.query_params.get('available_only', 'false').lower()
         if available_only == 'true':
@@ -368,37 +374,6 @@ class UserProductListView(StandardResponseMixin, APIView):
             status_code=200
         )
     
-    #previous
-    # @transaction.atomic
-    # def post(self, request):
-    #     """
-    #     Add product to user inventory (simulates scanning).
-    #     In production, this would be called after barcode scan.
-    #     """
-    #     serializer = CreateUserProductSerializer(
-    #         data=request.data,
-    #         context={'request': request}
-    #     )
- 
-    #     if serializer.is_valid():
-    #         user_product = serializer.save()
- 
-    #         response_serializer = UserProductSerializer(
-    #             user_product,
-    #             context={'request': request}
-    #         )
- 
-    #         return self.success_response(
-    #             data=response_serializer.data,
-    #             message="Product added to inventory successfully",
-    #             status_code=201
-    #         )
- 
-    #     return self.error_response(
-    #         "Failed to add product to inventory",
-    #         status_code=400,
-    #         data=serializer.errors
-    #     )
     @transaction.atomic
     def post(self, request):
         """Create new mix with products in one request"""
@@ -656,7 +631,7 @@ class CheckMixCreationView(StandardResponseMixin, APIView):
         has_clients = Client.objects.filter(user=user).exists()
         
         '''
-        can_create_mix = has_products and has_clients
+        #can_create_mix = has_products and has_clients
  
         messages = []
         if not has_products:
@@ -666,10 +641,11 @@ class CheckMixCreationView(StandardResponseMixin, APIView):
  
         return self.success_response(
             data={
-                'can_create_mix': can_create_mix,
+                'can_create_mix': True,# ✅ ALWAYS TRUE
                 'has_products': has_products,
                 'has_clients': has_clients,
-                'messages': messages
+                'messages': messages,
+                'allow_empty_mix': True  # ✅ Signal to frontend
             },
             message="Mix creation check completed",
             status_code=200
@@ -1640,7 +1616,7 @@ class ScanBarcodeView(StandardResponseMixin, APIView):
                 defaults={
                     'current_weight_grams': Decimal('0.00'),  # User adds weight later
                     'user_price': shop_product.market_price,
-                    'is_available': False  # Not available until weight added
+                    'is_available': True  # Not available until weight added
                 }
             )
             
@@ -1693,7 +1669,7 @@ class ScanBarcodeView(StandardResponseMixin, APIView):
                     product=shop_product,
                     current_weight_grams=Decimal('0.00'),
                     user_price=Decimal('0.00'),
-                    is_available=False  # Not available until weight/price added
+                    is_available=True  # Not available until weight/price added
                 )
                 
                 # Check price/weight from API

@@ -144,11 +144,19 @@ class SubscriptionStatusView(StandardResponseMixin, APIView):
         try:
             subscription = user.subscription
             serializer = SubscriptionSerializer(subscription)
-            
+
+            # ✅ Check if subscription is truly active
+            is_active = (
+                subscription.is_active and 
+                subscription.status == 'active' and
+                subscription.subscription_end_date and
+                subscription.subscription_end_date > timezone.now()
+            )
             # ✅ Enhanced response with plan info
             return self.success_response(
                 data={
-                    'is_subscribed': subscription.is_active,
+                    #'is_subscribed': subscription.is_active,
+                    'is_subscribed': is_active,  # ✅ Use computed value
                     'plan_type': subscription.plan_type,
                     'status': subscription.status,
                     'subscription_details': serializer.data
@@ -232,13 +240,19 @@ def revenuecat_webhook(request):
 def handle_subscription_purchase(user, payload, net_amount):
     """Handle initial subscription purchase"""
     from datetime import datetime
+
+    # ✅ Extract plan type from product_id
+    product_id = payload['event']['product_id']
+    plan_type = 'monthly' if 'month' in product_id.lower() else 'yearly'
     
     # Update or create subscription
     subscription, created = Subscription.objects.update_or_create(
         user=user,
         defaults={
             'revenuecat_customer_id': payload['event']['app_user_id'],
-            'product_id': payload['event']['product_id'],
+            #'product_id': payload['event']['product_id'],
+            'product_id': product_id,
+            'plan_type': plan_type,  # ✅ Add this
             'status': 'active',
             'subscription_start_date': timezone.now(),
             'subscription_end_date': datetime.fromtimestamp(
@@ -510,25 +524,43 @@ class CreateSubscriptionView(StandardResponseMixin, APIView):
                         'commission_rate': Decimal('25.00')
                     }
                 )
-            
+            # ✅ Calculate end date
+            from datetime import timedelta
+            start_date = timezone.now()
+            end_date = start_date + timedelta(days=30 if plan_type == 'monthly' else 365)
             # Create/Update subscription
             subscription, sub_created = Subscription.objects.update_or_create(
                 user=user,
-                defaults={
-                    'plan_type': plan_type,
-                    'status': 'trial',
-                    'revenuecat_customer_id': f"user_{user_id}",
-                    'product_id': f"{plan_type}_plan",
-                    'is_active': False
-                }
+                # defaults={
+                #     'plan_type': plan_type,
+                #     'status': 'trial',
+                #     'revenuecat_customer_id': f"user_{user_id}",
+                #     'product_id': f"{plan_type}_plan",
+                #     'is_active': False
+                # }
+            defaults={
+                'plan_type': plan_type,
+                'status': 'active',  # ✅ Changed from 'trial'
+                'is_active': True,   # ✅ Changed from False
+                'subscription_start_date': start_date,
+                'subscription_end_date': end_date,
+                'revenuecat_customer_id': f"user_{user_id}",
+                'product_id': f"{plan_type}_plan",
+                'subscription_amount': Decimal('9.99') if plan_type == 'monthly' else Decimal('99.99'),
+            }
             )
-            
+                    # ✅ Update user subscription status
+            user.has_active_subscription = True
+            user.subscription_expires_at = end_date
+            user.save(update_fields=['has_active_subscription', 'subscription_expires_at'])
             return self.success_response(
                 data={
                     'message': 'Subscription initialized',
                     'referral_used': bool(referral_code),  # ✅ Indicate if referral was used
                     'plan_type': plan_type,
-                    'subscription_status': subscription.status
+                    'subscription_status': subscription.status,
+                    'is_active': subscription.is_active,
+                    'expires_at': end_date.isoformat()
                 },
                 message="Subscription created successfully",
                 status_code=201
