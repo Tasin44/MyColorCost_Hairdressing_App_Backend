@@ -1,12 +1,16 @@
 from rest_framework import serializers
 from django.db import transaction
 from decimal import Decimal
+# from django.contrib.auth.models import User
+from django.conf import settings
 from .models import (
     RetailerProfile, DeliveryArea, 
     MissingProduct, CustomerDeliveryAddress
 )
 from mixapp.models import ShopProduct
+from django.contrib.auth import get_user_model
 
+User = get_user_model()
 
 class DeliveryAreaSerializer(serializers.ModelSerializer):
     """Serializer for delivery areas"""
@@ -210,3 +214,91 @@ class CustomerDeliveryAddressSerializer(serializers.ModelSerializer):
         )
         
         return address
+
+
+#============================================================================================================\
+
+# serializers.py
+
+class RetailerProfilePublicSetupSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(write_only=True)
+    delivery_areas = serializers.ListField(
+        child=serializers.CharField(max_length=255),
+        required=True
+    )
+
+    class Meta:
+        model = RetailerProfile
+        fields = [
+            'email',
+            'business_name',
+            'delivery_charge',
+            'free_delivery_threshold',
+            'delivery_areas',
+            'api_key'
+        ]
+        extra_kwargs = {
+            'api_key': {'required': False, 'allow_blank': True, 'allow_null': True}
+        }
+
+    def validate_email(self, value):
+        email = value.lower().strip()
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError("User not found.")
+
+        if user.role != 'retailer':
+            raise serializers.ValidationError("This user is not a retailer.")
+
+        if not user.verified:
+            raise serializers.ValidationError("Email is not verified.")
+
+        if hasattr(user, 'retailer_profile'):
+            raise serializers.ValidationError("Retailer profile already exists.")
+
+        self.context['user'] = user
+        return email
+
+    def validate_delivery_areas(self, value):
+        if not value:
+            raise serializers.ValidationError("At least one delivery area is required.")
+        return value
+
+    def validate_api_key(self, value):
+        if not value or value.strip() == "":
+            return None
+        return value.strip()
+
+    @transaction.atomic
+    def create(self, validated_data):
+        delivery_areas_data = validated_data.pop('delivery_areas')
+        validated_data.pop('email')
+
+        user = self.context['user']
+
+        validated_data['is_approved'] = True
+
+        retailer_profile = RetailerProfile.objects.create(
+            user=user,
+            **validated_data
+        )
+
+        for area_name in delivery_areas_data:
+            DeliveryArea.objects.create(
+                retailer=retailer_profile,
+                area_name=area_name.strip()
+            )
+
+        return retailer_profile
+
+
+
+
+
+
+
+
+
+

@@ -4,7 +4,8 @@ from .views import (
     RetailerProductListView, RetailerProductCreateView,
     RetailerProductDetailView, MissingProductRequestView,
     DeliveryAddressListCreateView,RetailerStripeCompleteView,RetailerStripeOnboardView,
-    RetailerStripeStatusView, retailer_dashboard_view,RetailerOrderListView,RetailerOrderDetailView,RetailerPaymentListView
+    RetailerStripeStatusView, retailer_dashboard_view,RetailerOrderListView,RetailerOrderDetailView,RetailerPaymentListView,
+    RetailerProfilePublicSetupView
 )
 
 app_name = 'retailerapp'
@@ -44,4 +45,12 @@ urlpatterns = [
     
     # ✅ NEW: Payment history
     path('payments/', RetailerPaymentListView.as_view(), name='retailer-payments'),
+
+
+    #================
+    path(
+        'retailer/profile/setup/',
+        RetailerProfilePublicSetupView.as_view(),
+        name='retailer-profile-public-setup'
+    ),
 ]

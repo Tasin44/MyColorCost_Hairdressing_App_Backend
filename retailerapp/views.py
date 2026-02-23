@@ -17,7 +17,7 @@ from .serializers import (
     RetailerProfileSetupSerializer, DeliveryAreaSerializer,
     RetailerDashboardStatsSerializer, RetailerProductSerializer,
     CreateRetailerProductSerializer, MissingProductSerializer,
-    CustomerDeliveryAddressSerializer
+    CustomerDeliveryAddressSerializer, RetailerProfilePublicSetupSerializer
 )
 import stripe
 from django.conf import settings
@@ -914,7 +914,40 @@ def retailer_dashboard_view(request):
 
 
 
+#========================================================================================================\
+# views.py
 
+class RetailerProfilePublicSetupView(StandardResponseMixin, APIView):
+    permission_classes = [AllowAny]
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = RetailerProfilePublicSetupSerializer(
+            data=request.data
+        )
+
+        if serializer.is_valid():
+            retailer_profile = serializer.save()
+
+            return self.success_response(
+                data={
+                    "business_name": retailer_profile.business_name,
+                    "delivery_charge": str(retailer_profile.delivery_charge),
+                    "free_delivery_threshold": str(retailer_profile.free_delivery_threshold),
+                    "api_key": retailer_profile.api_key,
+                    "delivery_areas": list(
+                        retailer_profile.delivery_areas.values("id", "area_name")
+                    )
+                },
+                message="Retailer profile setup completed",
+                status_code=201
+            )
+
+        return self.error_response(
+            "Profile setup failed",
+            status_code=400,
+            data=serializer.errors
+        )
 
 
 
