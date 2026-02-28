@@ -73,7 +73,17 @@ class StandardResponseMixin:
             response["data"] = data
 
         return Response(response, status=status_code)
-    
+
+def extract_first_error(errors):
+    """Extract the first error message from serializer errors dict"""
+    for field, messages in errors.items():
+        if isinstance(messages, list) and messages:
+            return str(messages[0])
+        elif isinstance(messages, str):
+            return messages
+    return ""
+
+
 class SignupView(StandardResponseMixin, APIView):
     permission_classes = [AllowAny]
     
@@ -116,8 +126,9 @@ class SignupView(StandardResponseMixin, APIView):
                 message="User created. OTP sent to email.",
                 status_code=201
             )
+        reason = extract_first_error(serializer.errors)
         return self.error_response(
-            "Signup failed",
+            f"Signup failed: {reason}",
             status_code=400,
             data=serializer.errors
         )
@@ -156,8 +167,9 @@ class VerifyOTPView(StandardResponseMixin, APIView):
                 message="Email verified successfully.",
                 status_code=200
             )
+        reason = extract_first_error(serializer.errors)
         return self.error_response(
-            "Verification failed",
+            f"Verification failed: {reason}",
             status_code=400,
             data=serializer.errors
         )
@@ -239,8 +251,9 @@ class LoginView(StandardResponseMixin, APIView):
                 message="Login successful.",
                 status_code=200
             )
+        reason = extract_first_error(serializer.errors)
         return self.error_response(
-            "Login failed",
+            f"Login failed: {reason}",
             status_code=401,
             data=serializer.errors
         )
