@@ -93,7 +93,13 @@ class RetailerProfile(models.Model):
         help_text="Is Stripe onboarding complete?"
     )
     stripe_connection_date = models.DateTimeField(null=True, blank=True)
-
+    # ✅ ADDed 28th feb
+    business_logo = models.ImageField(
+        upload_to='retailer_logos/',
+        null=True,
+        blank=True,
+        help_text="Business logo image"
+    )
     # ✅ Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -17,7 +17,8 @@ from .serializers import (
     RetailerProfileSetupSerializer, DeliveryAreaSerializer,
     RetailerDashboardStatsSerializer, RetailerProductSerializer,
     CreateRetailerProductSerializer, MissingProductSerializer,
-    CustomerDeliveryAddressSerializer, RetailerProfilePublicSetupSerializer
+    CustomerDeliveryAddressSerializer, RetailerProfilePublicSetupSerializer,
+    RetailerProfileUpdateSerializer, RetailerPublicSerializer   # ✅ THESE TWO# ✅ ADDed 28th feb
 )
 import stripe
 from django.conf import settings
@@ -50,7 +51,7 @@ class StandardResponseMixin:
         return Response(response, status=status_code)
 
 
-class RetailerProfileSetupView(StandardResponseMixin, APIView):
+class RetailerProfileSetupView(StandardResponseMixin, APIView):#❌❌❌This view is not currently using 
     """
     Setup retailer profile after signup.
     Must be called after OTP verification.
@@ -88,10 +89,16 @@ class RetailerProfileSetupView(StandardResponseMixin, APIView):
             # retailer_profile.is_approved = True
             # retailer_profile.save(update_fields=['is_approved'])
             #====================================================================
-
+            # ✅ Build logo URL# ✅ ADDed 28th feb
+            business_logo_url = None
+            if retailer_profile.business_logo:
+                business_logo_url = request.build_absolute_uri(
+                    retailer_profile.business_logo.url
+                )
             return self.success_response(
                 data={
                     'business_name': retailer_profile.business_name,
+                    "business_logo": business_logo_url, # ✅ ADDed 28th feb
                     'delivery_charge': str(retailer_profile.delivery_charge),
                     'free_delivery_threshold': str(retailer_profile.free_delivery_threshold),
                     "api_key": retailer_profile.api_key,  # ✅ ADD THIS LINE
@@ -310,7 +317,7 @@ class RetailerProductDetailView(StandardResponseMixin, APIView):
         # ✅ Allowed fields for update
         allowed_fields = [
             'name', 'description', 'image', 'market_price',
-            'quantity', 'barcode'
+            'quantity', 'barcode','vat'
         ]
         
         update_data = {
@@ -915,11 +922,11 @@ def retailer_dashboard_view(request):
 
 
 #========================================================================================================\
-# views.py
+# Latest retailer profiel setup view which is using now
 
 class RetailerProfilePublicSetupView(StandardResponseMixin, APIView):
     permission_classes = [AllowAny]
-
+    parser_classes = [MultiPartParser, FormParser]
     @transaction.atomic
     def post(self, request):
         serializer = RetailerProfilePublicSetupSerializer(
@@ -928,10 +935,17 @@ class RetailerProfilePublicSetupView(StandardResponseMixin, APIView):
 
         if serializer.is_valid():
             retailer_profile = serializer.save()
-
+            # ✅ Build logo URL
+            business_logo_url = None
+            if retailer_profile.business_logo:
+                business_logo_url = request.build_absolute_uri(
+                    retailer_profile.business_logo.url
+                )
             return self.success_response(
                 data={
+                    "email":retailer_profile.user.email,
                     "business_name": retailer_profile.business_name,
+                    "business_logo": business_logo_url,      # ✅ ADDED
                     "delivery_charge": str(retailer_profile.delivery_charge),
                     "free_delivery_threshold": str(retailer_profile.free_delivery_threshold),
                     "api_key": retailer_profile.api_key,
@@ -948,8 +962,103 @@ class RetailerProfilePublicSetupView(StandardResponseMixin, APIView):
             status_code=400,
             data=serializer.errors
         )
+    def patch(self, request):
+        user = request.user
+        try:
+            retailer = user.retailer_profile
+        except RetailerProfile.DoesNotExist:
+            return self.error_response("Retailer profile not found", status_code=404)
+
+        serializer = RetailerProfileUpdateSerializer(
+            retailer,
+            data=request.data,
+            partial=True,
+            context={'request': request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return self.success_response(
+                data=serializer.data,
+                message="Profile updated successfully",
+                status_code=200
+            )
+        return self.error_response(serializer.errors, status_code=400)
+    
+#===============================================================================\
+# ✅ ADDed 28th feb
+
+class RetailerListView(StandardResponseMixin, APIView):
+    """
+    App store - list all approved retailers with logo, name, delivery info.
+    Accessible by all authenticated users (owner, staff, self-employed).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        retailers = RetailerProfile.objects.filter(
+            is_approved=True
+        ).prefetch_related('delivery_areas')
+
+        serializer = RetailerPublicSerializer(
+            retailers, many=True, context={'request': request}
+        )
+        return self.success_response(
+            data={
+                'retailers': serializer.data,
+                'total_count': retailers.count()
+            },
+            message="Retailers retrieved successfully",
+            status_code=200
+        )
 
 
+class RetailerPublicDetailView(StandardResponseMixin, APIView):
+    """
+    App - click on a retailer → see detail info + all his in-stock products.
+    Accessible by all authenticated users.
+    Also used by retailer dashboard (retailer_id = own id).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, retailer_id):
+        try:
+            retailer = RetailerProfile.objects.prefetch_related(
+                'delivery_areas'
+            ).get(id=retailer_id)
+        except RetailerProfile.DoesNotExist:
+            return self.error_response("Retailer not found", status_code=404)
+
+        # ✅ Retailer info
+        retailer_serializer = RetailerPublicSerializer(
+            retailer, context={'request': request}
+        )
+
+        # ✅ Products with quantity > 0 only
+        # If request user IS the retailer → show all his products (dashboard)
+        # If request user is app user → show only in-stock (quantity > 0)
+        is_own_dashboard = (
+            hasattr(request.user, 'retailer_profile') and
+            request.user.retailer_profile.id == retailer_id
+        )
+
+        if is_own_dashboard:
+            products = ShopProduct.objects.filter(retailer=retailer)
+        else:
+            products = ShopProduct.objects.filter(retailer=retailer, quantity__gt=0)
+
+        product_serializer = RetailerProductSerializer(
+            products, many=True, context={'request': request}
+        )
+
+        return self.success_response(
+            data={
+                'retailer': retailer_serializer.data,
+                'products': product_serializer.data,
+                'total_products': products.count()
+            },
+            message="Retailer details retrieved successfully",
+            status_code=200
+        )
 
 
 

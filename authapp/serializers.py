@@ -13,7 +13,7 @@ from datetime import timedelta
 import random
 import string
 from .utils import validate_and_get_otp
-
+from django.conf import settings
 
 # class AccountTypeSelectionSerializer(serializers.Serializer):
 #     account_type = serializers.ChoiceField(
@@ -312,8 +312,29 @@ class SignupSerializer(serializers.Serializer):
     @staticmethod
     def send_otp_email(email, otp_code):
         subject = "Your OTP Code for Verification in MyColorCos"
-        message = f"Your OTP code is: {otp_code}\nValid for 10 minutes."
-        send_mail(subject, message, 'noreply@yourdomain.com', [email])
+        # message = f"Your OTP code is: {otp_code}\nValid for 10 minutes."
+        message = f"""
+            Hello,
+
+            Thank you for registering with MyColorCost.
+
+            Your One-Time Password (OTP) for account verification is:
+
+            {otp_code}
+
+            This OTP is valid for 10 minutes. Please do not share this code with anyone for security reasons.
+
+            If you did not request this verification, please ignore this email.
+
+            Best regards,
+            MyColorCost Team
+            """
+        send_mail(subject, message, settings.EMAIL_HOST_USER, [email])
+        '''
+        Previously it was: send_mail(subject, message, noreply@yourdomain.com, [email])
+        Microsoft 365 is blocking it because:
+        ops@mycolourcost.com does NOT have permission to send as noreply@yourdomain.com
+        '''
 
 
 class VerifyOTPSerializer(serializers.Serializer):

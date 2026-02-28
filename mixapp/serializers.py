@@ -18,8 +18,8 @@ class ShopProductListSerializer(serializers.ModelSerializer):
     class Meta:
         model = ShopProduct
         fields = [
-            'id', 'name', 'image_url', 'market_price', 'average_rating', 'total_reviews',
-            'quantity', 'stock_status', 'retailer_name'  # ✅ ADD THESE
+            'id', 'name', 'image_url','description', 'market_price', 'average_rating', 'total_reviews',
+            'quantity', 'stock_status', 'retailer_name'  ,'vat'# ✅ ADDed 28th feb
         ]
  
     def get_image_url(self, obj):

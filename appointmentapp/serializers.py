@@ -14,7 +14,7 @@ from clientapp.models import Client
 from authapp.models import User
 
 from django.core.mail import send_mail
-
+from django.conf import settings
 # def send_appointment_email(appointment):
 #     """Send appointment confirmation email"""
 #     subject = f"Appointment Confirmation - {appointment.appointment_date}"
@@ -70,7 +70,7 @@ My Colour Cost
         send_mail(
             client_subject,
             client_message,
-            'noreply@mycolourcost.com',  # Change this
+            settings.EMAIL_HOST_USER,  # Change this'noreply@mycolourcost.com'
             [client_email],
             fail_silently=True
         )
@@ -96,7 +96,7 @@ My Colour Cost Dashboard
     send_mail(
         owner_subject,
         owner_message,
-        'noreply@mycolourcost.com',  # Change this
+        settings.EMAIL_HOST_USER,  # Change this'noreply@mycolourcost.com'
         [owner_email],
         fail_silently=True
     )

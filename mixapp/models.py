@@ -146,6 +146,15 @@ class ShopProduct(models.Model):
         default='in_stock',
         db_index=True
     )
+    # ✅ ADDed 28th feb
+    vat = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        default=Decimal('0.00'),
+        help_text="VAT percentage (e.g., 15.00 means 15%)"
+    )
     # ✅ Auto-update stock_status based on quantity
     def save(self, *args, **kwargs):
         # Auto-set stock_status based on quantity

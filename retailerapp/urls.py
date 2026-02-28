@@ -5,7 +5,10 @@ from .views import (
     RetailerProductDetailView, MissingProductRequestView,
     DeliveryAddressListCreateView,RetailerStripeCompleteView,RetailerStripeOnboardView,
     RetailerStripeStatusView, retailer_dashboard_view,RetailerOrderListView,RetailerOrderDetailView,RetailerPaymentListView,
-    RetailerProfilePublicSetupView
+    RetailerProfilePublicSetupView,
+    # RetailerProfileUpdateView,      # ✅ # ✅ ADDed 28th feb
+    RetailerListView,               # ✅ # ✅ ADDed 28th feb
+    RetailerPublicDetailView,       # ✅ # ✅ ADDed 28th feb
 )
 
 app_name = 'retailerapp'
@@ -53,4 +56,10 @@ urlpatterns = [
         RetailerProfilePublicSetupView.as_view(),
         name='retailer-profile-public-setup'
     ),
+
+    # ✅ ADDed 28th feb========================================\
+    # path('profile/update/', RetailerProfileUpdateView.as_view(), name='retailer-profile-update'),
+    path('retailers/', RetailerListView.as_view(), name='retailer-list'),
+    path('retailers/<int:retailer_id>/', RetailerPublicDetailView.as_view(), name='retailer-public-detail'),
+    #==========================================================/
 ]

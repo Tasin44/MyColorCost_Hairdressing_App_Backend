@@ -9,7 +9,8 @@ from .models import (
 )
 from mixapp.models import ShopProduct
 from django.contrib.auth import get_user_model
-
+import json
+from django.core.validators import MinValueValidator
 User = get_user_model()
 
 class DeliveryAreaSerializer(serializers.ModelSerializer):
@@ -44,11 +45,12 @@ class RetailerProfileSetupSerializer(serializers.ModelSerializer):
     class Meta:
         model = RetailerProfile
         fields = [
-            'business_name', 'delivery_charge',
+            'business_name', 'business_logo',# ✅ ADDed 28th feb
+            'delivery_charge',
             'free_delivery_threshold', 'delivery_areas','api_key'
         ]
         extra_kwargs = {
-            'api_key': {'required': False, 'allow_blank': True, 'allow_null': True}  # ✅ ADD THIS
+            'api_key': {'required': False, 'allow_blank': True, 'allow_null': True} , 'business_logo': {'required': False}   # ✅ ADDed 28th feb
         }
     
     def validate_delivery_areas(self, value):
@@ -89,6 +91,61 @@ class RetailerProfileSetupSerializer(serializers.ModelSerializer):
         return retailer_profile
 
 
+# ✅ ADDed 28th feb==================================================================================\
+# ✅ ADD THIS — place right after RetailerProfileSetupSerializer
+
+class RetailerProfileUpdateSerializer(serializers.ModelSerializer):
+    """For PATCH update of retailer profile"""
+    class Meta:
+        model = RetailerProfile
+        fields = [
+            'business_name', 'business_logo',
+            'delivery_charge', 'free_delivery_threshold'
+        ]
+        extra_kwargs = {
+            'business_name': {'required': False},
+            'business_logo': {'required': False},
+            'delivery_charge': {'required': False},
+            'free_delivery_threshold': {'required': False},
+        }
+
+    def update(self, instance, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
+
+
+class RetailerPublicSerializer(serializers.ModelSerializer):
+    """For public retailer list (app store - all retailers)"""
+    business_logo_url = serializers.SerializerMethodField()
+    retailer_email = serializers.CharField(source='user.email', read_only=True)
+    retailer_contact = serializers.CharField(source='user.phone_number', read_only=True)  # adjust field name if different
+    delivery_areas = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RetailerProfile
+        fields = [
+            'id', 'business_name', 'business_logo_url',
+            'retailer_email', 'retailer_contact',
+            'delivery_charge', 'free_delivery_threshold',
+            'delivery_areas'
+        ]
+
+    def get_business_logo_url(self, obj):
+        request = self.context.get('request')
+        if obj.business_logo and request:
+            return request.build_absolute_uri(obj.business_logo.url)
+        return None
+
+    def get_delivery_areas(self, obj):
+        return list(
+            obj.delivery_areas.filter(is_active=True).values_list('area_name', flat=True)
+        )
+
+
+#=====================================================================================================/
+
 class RetailerDashboardStatsSerializer(serializers.Serializer):
     """Serializer for retailer dashboard statistics"""
     total_orders = serializers.IntegerField()
@@ -106,12 +163,25 @@ class RetailerProductSerializer(serializers.ModelSerializer):
     """
     retailer_name = serializers.CharField(source='retailer.business_name', read_only=True)
     image_url = serializers.SerializerMethodField()
-    
+    def validate_market_price(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Market price cannot be negative.")
+        return value
+
+    def validate_quantity(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Quantity cannot be negative.")
+        return value
+
+    def validate_vat(self, value):
+        if value < 0:
+            raise serializers.ValidationError("VAT cannot be negative.")
+        return value
     class Meta:
         model = ShopProduct
         fields = [
             'id', 'name', 'description', 'image_url',
-            'market_price', 'quantity', 'stock_status',
+            'market_price', 'quantity', 'stock_status','vat',# ✅ ADDed 28th feb
             'retailer_name', 'average_rating', 'total_reviews',
             'created_at', 'updated_at'
         ]
@@ -135,11 +205,22 @@ class CreateRetailerProductSerializer(serializers.ModelSerializer):
     Serializer for creating new product by retailer.
     Auto-assigns retailer from request.user.
     """
+    market_price = serializers.DecimalField(
+        max_digits=10, decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.00'))]
+    )
+    quantity = serializers.IntegerField(
+        validators=[MinValueValidator(0)]
+    )
+    vat = serializers.DecimalField(
+        max_digits=5, decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.00'))]
+    )
     class Meta:
         model = ShopProduct
         fields = [
             'name', 'description', 'image',
-            'market_price', 'quantity', 'barcode'
+            'market_price', 'quantity', 'barcode','vat'# ✅ ADDed 28th feb
         ]
     
     def validate_name(self, value):
@@ -232,13 +313,15 @@ class RetailerProfilePublicSetupSerializer(serializers.ModelSerializer):
         fields = [
             'email',
             'business_name',
+             'business_logo',# ✅ ADDed 28th feb
             'delivery_charge',
             'free_delivery_threshold',
             'delivery_areas',
             'api_key'
         ]
         extra_kwargs = {
-            'api_key': {'required': False, 'allow_blank': True, 'allow_null': True}
+            'api_key': {'required': False, 'allow_blank': True, 'allow_null': True},
+            'business_logo': {'required': False}, # ✅ ADDed 28th feb
         }
 
     def validate_email(self, value):
@@ -264,7 +347,17 @@ class RetailerProfilePublicSetupSerializer(serializers.ModelSerializer):
     def validate_delivery_areas(self, value):
         if not value:
             raise serializers.ValidationError("At least one delivery area is required.")
-        return value
+        # ✅ FIX: If sent as JSON string from form-data, parse it
+        if len(value) == 1:
+            try:
+                parsed = json.loads(value[0])
+                if isinstance(parsed, list):
+                    return [v.strip() for v in parsed]
+            except (json.JSONDecodeError, TypeError):
+                pass
+        
+        return [v.strip() for v in value]
+        # return value
 
     def validate_api_key(self, value):
         if not value or value.strip() == "":
