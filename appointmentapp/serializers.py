@@ -674,21 +674,34 @@ class AppointmentSelfBookingSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         """Create self-booked appointment"""
-        validated_data.pop('token')  # Remove token from data
+                # ✅ Remove token from validated_data
+        validated_data.pop('token', None)
+        # ✅ Remove service_type if it was added in validate()
+        validated_data.pop('service_type', None)
+
         owner = self.context['owner']
         time_slot = self.context['time_slot']
         service_type = self.context['service_type']
-        
-        # Create appointment
-        appointment = Appointment.objects.create(
-            user=owner,
-            sub_user=None,  # No staff for self-booking
-            client=None,    # No existing client
-            appointment_type='self_booked',
-            service_type=service_type,  # FK for self-booking
-            service_name='',  # Empty for self-booking
-            **validated_data
-        )
+
+        # ✅ Log what's in validated_data
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Creating appointment with data: {validated_data}")
+
+        try:
+            # Create appointment
+            appointment = Appointment.objects.create(
+                user=owner,
+                sub_user=None,  # No staff for self-booking
+                client=None,    # No existing client
+                appointment_type='self_booked',
+                service_type=service_type,  # FK for self-booking
+                service_name='',  # Empty for self-booking
+                **validated_data
+            )
+        except Exception as e:
+            logger.error(f"Error creating appointment: {str(e)}")
+            raise
         # Update slot booking count
         time_slot.increment_booking()
         

@@ -9,6 +9,7 @@ from .views import (
     # RetailerProfileUpdateView,      # ✅ # ✅ ADDed 28th feb
     RetailerListView,               # ✅ # ✅ ADDed 28th feb
     RetailerPublicDetailView,       # ✅ # ✅ ADDed 28th feb
+     RetailerMyProfileView,   # ✅ ADD THIS
 )
 
 app_name = 'retailerapp'
@@ -62,4 +63,6 @@ urlpatterns = [
     path('retailers/', RetailerListView.as_view(), name='retailer-list'),
     path('retailers/<int:retailer_id>/', RetailerPublicDetailView.as_view(), name='retailer-public-detail'),
     #==========================================================/
+
+     path('my-profile/', RetailerMyProfileView.as_view(), name='retailer-my-profile'),  # ✅ ADD THIS
 ]

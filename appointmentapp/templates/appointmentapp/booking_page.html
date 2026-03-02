@@ -519,8 +519,8 @@
             color: #1f2937;
         }
     select option {
-        color: #1f2937 !important;  /* ✅ Add !important */
-        background: white !important;
+            color: #1f2937 !important;
+            background-color: #ffffff !important;
         padding: 10px;
     }
     /* ✅ Add specific styling for the service dropdown */
@@ -666,6 +666,7 @@
             </div>
 
             <form id="appointment-form">
+                {% csrf_token %}
                 <div class="form-group">
                     <label for="client_name">Your Name *</label>
                     <input type="text" id="client_name" name="client_name" required placeholder="Enter your full name">
@@ -772,7 +773,7 @@
                     const option = document.createElement('option');
                     option.value = service.id;
                     option.textContent = service.name;
-                    option.style.color = '#1f2937';
+                    //option.style.color = '#1f2937';
                     serviceSelect.appendChild(option);
                 });
                 
@@ -914,10 +915,17 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
                     },
                     body: JSON.stringify(formData)
                 });
-
+                // ✅ Check content type before parsing JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    console.error('Server returned HTML. Status:', response.status);
+                    alert(`Server error (${response.status}). Open Network tab to see details.`);
+                    return;
+                }
                 const result = await response.json();
                 console.log('Server response:', result);
 

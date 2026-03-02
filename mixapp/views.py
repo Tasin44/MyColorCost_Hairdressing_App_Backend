@@ -2477,3 +2477,239 @@ class FinancialOverviewView(APIView):
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+
+
+# ============================================================
+# Earning Overview Chart
+# ============================================================
+
+class EarningOverviewView(APIView):
+    """
+    GET /api/mix/earning-overview/
+    GET /api/mix/earning-overview/?year=2025
+    
+    ✅ Access: Owner & Self-Employed ONLY
+    ❌ Staff: No access (staff payment handled by owner)
+    
+    Returns:
+    - income_by_mix_creation: Monthly income from mixes
+    - expense_by_product_purchase: Monthly product purchase costs
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        user = request.user
+        
+        # ✅ Block staff users
+        if user.role == 'staff':
+            return Response({
+                'success': False,
+                'message': 'Access denied. Only Owner or Self-Employed can view earning overview.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # ✅ Only owner and self_employed allowed
+        if user.role not in ['owner', 'self_employed']:
+            return Response({
+                'success': False,
+                'message': 'Access denied.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # ✅ Get year from query params (default: current year)
+        year = request.query_params.get('year')
+        try:
+            year = int(year) if year else timezone.now().year
+        except ValueError:
+            return Response({
+                'success': False,
+                'message': 'Invalid year format.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        from .serializers import get_earning_overview
+        
+        data = get_earning_overview(user, year)
+        
+        return Response({
+            'success': True,
+            'year': year,
+            'data': data
+        }, status=status.HTTP_200_OK)
+    
+#===================================================================================================================
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.db.models import Sum, Q
+from django.utils import timezone
+from datetime import datetime
+from decimal import Decimal
+from calendar import month_name
+
+from mixapp.models import Mix
+from paymentapp.models import Payment
+from .serializers import Accountsdepartment, MonthlyBreakdownSerializer
+
+
+class StandardResponseMixin:
+    def success_response(self, data=None, message="Success", status_code=200):
+        response = {"success": True, "statusCode": status_code, "message": message}
+        if data is not None:
+            response["data"] = data
+        return Response(response, status=status_code)
+
+    def error_response(self, message, status_code=400, data=None):
+        response = {"success": False, "statusCode": status_code, "message": message}
+        if data is not None:
+            response["data"] = data
+        return Response(response, status=status_code)
+
+
+class AccountsDashboardOverviewView(StandardResponseMixin, APIView):
+    """
+    Dashboard overview for owner and self_employed roles only.
+
+    Query Params:
+    - filter_type : 'monthly' (default) or 'yearly'
+    - year        : e.g. 2025  (default = current year)
+    - month       : e.g. 3     (required only when filter_type=monthly, default = current month)
+    """
+    permission_classes = [IsAuthenticated]
+
+    ALLOWED_ROLES = ['owner', 'self_employed']
+
+    def get(self, request):
+        user = request.user
+
+        # ✅ Role check
+        if not hasattr(user, 'role') or user.role not in self.ALLOWED_ROLES:
+            return self.error_response(
+                "Access denied. Only owner and self_employed can view dashboard.",
+                status_code=403
+            )
+
+        # ✅ Parse query params
+        filter_type = request.query_params.get('filter_type', 'monthly').lower()
+        now = timezone.now()
+
+        try:
+            year = int(request.query_params.get('year', now.year))
+        except ValueError:
+            return self.error_response("Invalid year format.", status_code=400)
+
+        try:
+            month = int(request.query_params.get('month', now.month))
+        except ValueError:
+            return self.error_response("Invalid month format.", status_code=400)
+
+        if filter_type not in ['monthly', 'yearly']:
+            return self.error_response(
+                "filter_type must be 'monthly' or 'yearly'.",
+                status_code=400
+            )
+
+        if filter_type == 'monthly':
+            # ✅ Monthly: single month income & expense
+            income = self._get_monthly_income(user, year, month)
+            expense = self._get_monthly_expense(user, year, month)
+
+            dashboard_data = self._build_user_data(
+                user=user,
+                request=request,
+                income=income,
+                expense=expense,
+                filter_type=filter_type,
+                year=year,
+                month=month
+            )
+
+            return self.success_response(
+                data=dashboard_data,
+                message="Monthly dashboard retrieved successfully."
+            )
+
+        else:
+            # ✅ Yearly: total + month-by-month breakdown
+            yearly_income = Decimal('0.00')
+            yearly_expense = Decimal('0.00')
+            breakdown = []
+
+            for m in range(1, 13):
+                m_income = self._get_monthly_income(user, year, m)
+                m_expense = self._get_monthly_expense(user, year, m)
+                yearly_income += m_income
+                yearly_expense += m_expense
+
+                breakdown.append({
+                    "month": m,
+                    "month_name": month_name[m],
+                    "income": m_income,
+                    "expense": m_expense,
+                    "net_profit": m_income - m_expense,
+                })
+
+            dashboard_data = self._build_user_data(
+                user=user,
+                request=request,
+                income=yearly_income,
+                expense=yearly_expense,
+                filter_type=filter_type,
+                year=year,
+                month=None
+            )
+
+            # ✅ Attach monthly breakdown for yearly filter
+            dashboard_data['monthly_breakdown'] = MonthlyBreakdownSerializer(
+                breakdown, many=True
+            ).data
+
+            return self.success_response(
+                data=dashboard_data,
+                message="Yearly dashboard retrieved successfully."
+            )
+
+    # ─────────────────────────────────────────
+    # HELPERS
+    # ─────────────────────────────────────────
+
+    def _get_monthly_income(self, user, year, month):
+        """Total profit from mix creation in a given month"""
+        result = Mix.objects.filter(
+            user=user,
+            created_at__year=year,
+            created_at__month=month,
+        ).aggregate(total=Sum('profit'))
+        return result['total'] or Decimal('0.00')
+
+    def _get_monthly_expense(self, user, year, month):
+        """Total amount spent on product purchases (completed payments) in a given month"""
+        result = Payment.objects.filter(
+            user=user,
+            status='completed',
+            created_at__year=year,
+            created_at__month=month,
+        ).aggregate(total=Sum('total_amount'))
+        return result['total'] or Decimal('0.00')
+
+    def _build_user_data(self, user, request, income, expense, filter_type, year, month):
+        """Build the final response dict"""
+        profile_image = None
+        if hasattr(user, 'profile_image') and user.profile_image:
+            try:
+                profile_image = request.build_absolute_uri(user.profile_image.url)
+            except Exception:
+                profile_image = None
+
+        return {
+            "user_id": user.id,
+            "name": getattr(user, 'name', '') or getattr(user, 'full_name', ''),
+            "email": user.email,
+            "role": user.role,
+            "profile_image": profile_image,
+            "total_income": income,
+            "total_expense": expense,
+            "net_profit": income - expense,
+            "filter_type": filter_type,
+            "filter_year": year,
+            "filter_month": month,
+        }

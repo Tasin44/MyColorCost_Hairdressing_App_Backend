@@ -21,7 +21,9 @@ from .views import (
     ScanBarcodeView, ManualProductEntryView,
     UpdateScannedProductView,ProductScanHistoryView,
     AddToCartView, ViewCartView, RemoveFromCartView, UpdateCartItemView,
-    ExpenseViewSet,RetailerProductsListView,UserInventoryProductsView,FinancialOverviewView
+    ExpenseViewSet,RetailerProductsListView,UserInventoryProductsView,FinancialOverviewView,
+    EarningOverviewView , # ✅ ADD THIS
+    AccountsDashboardOverviewView
 )
  
 app_name = 'mixapp'
@@ -84,7 +86,10 @@ urlpatterns = [
 
     #===========================================================
     path('financial-overview/', FinancialOverviewView.as_view(), name='financial-overview'),
+    path('earning-overview/', EarningOverviewView.as_view(), name='earning-overview'),  # ✅ ADD THIS
 
+    #==========================================================
+    path('overview/', AccountsDashboardOverviewView.as_view(), name='dashboard-overview'),
 ]
 
 

@@ -562,6 +562,8 @@ class RetailerPaymentListView(StandardResponseMixin, APIView):
             status_code=200
         )
 
+# ...existing code...
+
 
 #=======================================================================================================================================
 
@@ -983,7 +985,41 @@ class RetailerProfilePublicSetupView(StandardResponseMixin, APIView):
                 status_code=200
             )
         return self.error_response(serializer.errors, status_code=400)
-    
+# ...existing code...
+
+class RetailerMyProfileView(StandardResponseMixin, APIView):
+    """
+    GET: Retailer sees own profile + all products (token based)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+            return self.error_response("Unauthorized", status_code=403)
+
+        retailer = user.retailer_profile
+
+        retailer_serializer = RetailerPublicSerializer(
+            retailer, context={'request': request}
+        )
+
+        products = ShopProduct.objects.filter(retailer=retailer).order_by('-created_at')
+
+        product_serializer = RetailerProductSerializer(
+            products, many=True, context={'request': request}
+        )
+
+        return self.success_response(
+            data={
+                'retailer': retailer_serializer.data,
+                'products': product_serializer.data,
+                'total_products': products.count()
+            },
+            message="Retailer details retrieved successfully",
+            status_code=200
+        )
 #===============================================================================\
 # ✅ ADDed 28th feb
 

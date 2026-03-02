@@ -1220,4 +1220,103 @@ class FinancialOverviewSerializer(serializers.Serializer):
 
 
 
+# ============================================================
+# Earning Overview (Income by Mix Creation + Expense by Product Purchase)
+# ============================================================
 
+def get_earning_overview(user, year=None):
+    """
+    Returns monthly income (from mix charged_amount) 
+    and expense (from completed payments) for owner/self_employed only.
+    """
+    from django.utils import timezone
+    from datetime import datetime
+    
+    if not year:
+        year = timezone.now().year
+    
+    month_names = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ]
+    
+    income_by_mix = []
+    expense_by_product = []
+    
+    for month_num in range(1, 13):
+        month_start = timezone.make_aware(datetime(year, month_num, 1))
+        if month_num == 12:
+            month_end = timezone.make_aware(datetime(year + 1, 1, 1))
+        else:
+            month_end = timezone.make_aware(datetime(year, month_num + 1, 1))
+        
+        # ✅ Income = charged_amount from Mix (owner sees all mixes including staff)
+        income = Mix.objects.filter(
+            user=user,
+            created_at__gte=month_start,
+            created_at__lt=month_end,
+            charged_amount__isnull=False
+        ).aggregate(total=Sum('charged_amount'))['total'] or Decimal('0.00')
+        
+        # ✅ Expense = completed payments (product purchases)
+        expense = Payment.objects.filter(
+            user=user,
+            created_at__gte=month_start,
+            created_at__lt=month_end,
+            status='completed'
+        ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        
+        income_by_mix.append({
+            'month': month_names[month_num - 1],
+            'amount': float(income)
+        })
+        
+        expense_by_product.append({
+            'month': month_names[month_num - 1],
+            'amount': float(expense)
+        })
+    
+    return {
+        'income_by_mix_creation': income_by_mix,
+        'expense_by_product_purchase': expense_by_product
+    }
+
+
+#=====================================================================================================
+
+class Accountsdepartment(serializers.Serializer):
+    """Serializer for dashboard overview"""
+
+    # User details
+    user_id = serializers.IntegerField()
+    name = serializers.CharField()
+    email = serializers.CharField()
+    role = serializers.CharField()
+    profile_image = serializers.SerializerMethodField()
+
+    # Financial summary
+    total_income = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_expense = serializers.DecimalField(max_digits=12, decimal_places=2)
+    net_profit = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+    # Filter info
+    filter_type = serializers.CharField()   # 'monthly' or 'yearly'
+    filter_year = serializers.IntegerField()
+    filter_month = serializers.IntegerField(allow_null=True)
+
+    def get_profile_image(self, obj):
+        request = self.context.get('request')
+        image = obj.get('profile_image')
+        if image and request:
+            return request.build_absolute_uri(image.url)
+        return None
+
+
+class MonthlyBreakdownSerializer(serializers.Serializer):
+    """Month by month breakdown for yearly filter"""
+    month = serializers.IntegerField()
+    month_name = serializers.CharField()
+    income = serializers.DecimalField(max_digits=12, decimal_places=2)
+    expense = serializers.DecimalField(max_digits=12, decimal_places=2)
+    net_profit = serializers.DecimalField(max_digits=12, decimal_places=2)
+    

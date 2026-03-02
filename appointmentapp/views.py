@@ -559,49 +559,49 @@ class AppointmentCreateView(StandardResponseMixin, APIView):
 class AppointmentSelfBookingView(StandardResponseMixin, APIView):
     permission_classes = [AllowAny]
     
-    def get(self, request, token):
-        """Get booking page info"""
-        try:
-            appointment_url = AppointmentURL.objects.select_related('user').get(
-                token=token,
-                is_active=True
-            )
-        except AppointmentURL.DoesNotExist:
-            return self.error_response(
-                "Invalid or inactive booking URL",
-                status_code=404
-            )
+    # def get(self, request, token):
+    #     """Get booking page info"""
+    #     try:
+    #         appointment_url = AppointmentURL.objects.select_related('user').get(
+    #             token=token,
+    #             is_active=True
+    #         )
+    #     except AppointmentURL.DoesNotExist:
+    #         return self.error_response(
+    #             "Invalid or inactive booking URL",
+    #             status_code=404
+    #         )
         
-        owner = appointment_url.user
+    #     owner = appointment_url.user
         
-        # ✅ CHECK working hours FIRST
-        if not hasattr(owner, 'working_hours'):
-            return self.error_response(
-                "Booking unavailable - working hours not set",
-                status_code=400
-            )
+    #     # ✅ CHECK working hours FIRST
+    #     if not hasattr(owner, 'working_hours'):
+    #         return self.error_response(
+    #             "Booking unavailable - working hours not set",
+    #             status_code=400
+    #         )
         
-        wh = owner.working_hours
-        working_hours_data = {
-            'start_time': wh.start_time.strftime('%H:%M'),
-            'end_time': wh.end_time.strftime('%H:%M'),
-            'off_days': wh.get_off_days_list()
-        }
+    #     wh = owner.working_hours
+    #     working_hours_data = {
+    #         'start_time': wh.start_time.strftime('%H:%M'),
+    #         'end_time': wh.end_time.strftime('%H:%M'),
+    #         'off_days': wh.get_off_days_list()
+    #     }
         
-        # ✅ FIX: Return services as list of dicts with id and name
-        services = ServiceType.objects.filter(user=owner).values('id', 'name')
+    #     # ✅ FIX: Return services as list of dicts with id and name
+    #     services = ServiceType.objects.filter(user=owner).values('id', 'name')
         
-        logger.info(f"Services for {owner.email}: {list(services)}")
+    #     logger.info(f"Services for {owner.email}: {list(services)}")
         
-        return self.success_response(
-            data={
-                'salon_name': owner.name or owner.email,
-                'user_id': owner.id,
-                'services': list(services),  # ✅ This returns [{'id': 1, 'name': 'Haircut'}, ...]
-                'working_hours': working_hours_data
-            },
-            message="Booking information retrieved successfully"
-        )
+    #     return self.success_response(
+    #         data={
+    #             'salon_name': owner.name or owner.email,
+    #             'user_id': owner.id,
+    #             'services': list(services),  # ✅ This returns [{'id': 1, 'name': 'Haircut'}, ...]
+    #             'working_hours': working_hours_data
+    #         },
+    #         message="Booking information retrieved successfully"
+    #     )
     #I want to add it s logic, is it necessary?
     #Same as above - DON'T ADD IT. The serializer handles everything. 
     #Your commented code (lines 668-738) duplicates what AppointmentSelfBookingSerializer.create() already does.
@@ -722,7 +722,41 @@ class AppointmentSelfBookingView(StandardResponseMixin, APIView):
     
     '''
 
-
+    @transaction.atomic
+    def post(self, request, token):
+        """Create self-booked appointment"""
+        data = request.data.copy()
+        data['token'] = token
+        
+        serializer = AppointmentSelfBookingSerializer(
+            data=data,
+            context={'request': request}
+        )
+        
+        if not serializer.is_valid():
+            return self.error_response(
+                "Failed to book appointment",
+                status_code=400,
+                data=serializer.errors
+            )
+        
+        try:
+            appointment = serializer.save()
+        except Exception as e:
+            logger.exception(f"Error saving appointment: {str(e)}")
+            return self.error_response(
+                f"Server error: {str(e)}",
+                status_code=500
+            )
+        detail_serializer = AppointmentDetailSerializer(
+            appointment,
+            context={'request': request}
+        )
+        return self.success_response(
+            data=detail_serializer.data,
+            message="Appointment booked successfully!",
+            status_code=201
+        )
     def get(self, request, token):
         """Get booking page info"""
         try:
@@ -738,44 +772,83 @@ class AppointmentSelfBookingView(StandardResponseMixin, APIView):
         
         owner = appointment_url.user
         
-        # ✅ CHECK working hours FIRST
         if not hasattr(owner, 'working_hours'):
             return self.error_response(
                 "Booking unavailable - working hours not set",
                 status_code=400
             )
         
-        # ✅ NOW safe to access
         wh = owner.working_hours
-        working_hours_data = {
-            'start_time': wh.start_time.strftime('%H:%M'),
-            'end_time': wh.end_time.strftime('%H:%M'),
-            'off_days': wh.get_off_days_list()
-        }
         
-        # Get services
-        services = ServiceType.objects.filter(user=owner).values_list('name', flat=True)
-        logger.info(f"Services for {owner.email}: {list(services)}")
+        # ✅ MUST return id and name, not flat list
+        services = list(ServiceType.objects.filter(user=owner).values('id', 'name'))
 
         return self.success_response(
-            # data={
-            #     'salon_name': owner.name or owner.email,
-            #     'services': list(services),
-            #     'working_hours': working_hours_data,
-            #     'user_id': str(owner.id)
-            # },
             data={
                 'salon_name': owner.name or owner.email,
                 'user_id': owner.id,
-                'services': list(services),  # ✅ Convert QuerySet to list
+                'services': services,
                 'working_hours': {
-                    'start_time': owner.working_hours.start_time.strftime('%H:%M'),
-                    'end_time': owner.working_hours.end_time.strftime('%H:%M'),
-                    'off_days': owner.working_hours.get_off_days_list()
+                    'start_time': wh.start_time.strftime('%H:%M'),
+                    'end_time': wh.end_time.strftime('%H:%M'),
+                    'off_days': wh.get_off_days_list()
                 }
             },
             message="Booking information retrieved successfully"
         )
+    # def get(self, request, token):
+    #     """Get booking page info"""
+    #     try:
+    #         appointment_url = AppointmentURL.objects.select_related('user').get(
+    #             token=token,
+    #             is_active=True
+    #         )
+    #     except AppointmentURL.DoesNotExist:
+    #         return self.error_response(
+    #             "Invalid or inactive booking URL",
+    #             status_code=404
+    #         )
+        
+    #     owner = appointment_url.user
+        
+    #     # ✅ CHECK working hours FIRST
+    #     if not hasattr(owner, 'working_hours'):
+    #         return self.error_response(
+    #             "Booking unavailable - working hours not set",
+    #             status_code=400
+    #         )
+        
+    #     # ✅ NOW safe to access
+    #     wh = owner.working_hours
+    #     working_hours_data = {
+    #         'start_time': wh.start_time.strftime('%H:%M'),
+    #         'end_time': wh.end_time.strftime('%H:%M'),
+    #         'off_days': wh.get_off_days_list()
+    #     }
+        
+    #     # Get services
+    #     services = ServiceType.objects.filter(user=owner).values_list('name', flat=True)
+    #     logger.info(f"Services for {owner.email}: {list(services)}")
+
+    #     return self.success_response(
+    #         # data={
+    #         #     'salon_name': owner.name or owner.email,
+    #         #     'services': list(services),
+    #         #     'working_hours': working_hours_data,
+    #         #     'user_id': str(owner.id)
+    #         # },
+    #         data={
+    #             'salon_name': owner.name or owner.email,
+    #             'user_id': owner.id,
+    #             'services': list(services),  # ✅ Convert QuerySet to list
+    #             'working_hours': {
+    #                 'start_time': owner.working_hours.start_time.strftime('%H:%M'),
+    #                 'end_time': owner.working_hours.end_time.strftime('%H:%M'),
+    #                 'off_days': owner.working_hours.get_off_days_list()
+    #             }
+    #         },
+    #         message="Booking information retrieved successfully"
+    #     )
 
 class AppointmentListView(StandardResponseMixin, APIView):
     """
