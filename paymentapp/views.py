@@ -957,15 +957,180 @@ def payment_cancel_view(request):
     return render(request, 'paymentapp/cancel.html')
 
 
+#======================================================================================================
+#Retailer sales 
+
+# retailerapp/views.py
+
+'''
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from django.db.models import Sum, Count
+from django.db.models.functions import TruncMonth
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+from decimal import Decimal
+
+from paymentapp.models import PaymentRetailerSplit
+from paymentapp.serializers import MonthlySalesSerializer
 
 
+class RetailerMonthlySalesView(StandardResponseMixin, APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+
+        user = request.user
+
+        if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+            return self.error_response("Unauthorized - retailer access only", status_code=403)
+
+        retailer = user.retailer_profile
+
+        years_back = int(request.query_params.get('years', 1))
+
+        end_date = datetime.now().date()
+        start_date = end_date - relativedelta(years=years_back)
+
+        queryset = (
+            PaymentRetailerSplit.objects
+            .filter(
+                retailer=retailer,
+                payment__status='pending', # will change it to payment status 'complete' later at production
+                payment__created_at__date__gte=start_date,
+                payment__created_at__date__lte=end_date
+            )
+            .annotate(month=TruncMonth('payment__created_at'))
+            .values('month')
+            .annotate(
+                total_sales=Sum('product_amount'),
+                order_count=Count('payment', distinct=True)
+            )
+        )
+
+        # Convert queryset to dictionary
+        sales_map = {}
+
+        for row in queryset:
+            key = row['month'].strftime("%Y-%m")
+            sales_map[key] = row
+
+        # Generate full month list
+        result = []
+
+        current = start_date.replace(day=1)
+
+        while current <= end_date:
+
+            key = current.strftime("%Y-%m")
+
+            row = sales_map.get(key)
+
+            total_sales = row['total_sales'] if row else Decimal('0.00')
+            order_count = row['order_count'] if row else 0
+
+            result.append({
+                "year": current.year,
+                "month_index": current.month - 1,   # Jan=0
+                "month_name": current.strftime("%B"),
+                "total_sales": total_sales,
+                "order_count": order_count
+            })
+
+            current += relativedelta(months=1)
+
+        serializer = MonthlySalesSerializer(result, many=True)
+
+        lifetime_total = PaymentRetailerSplit.objects.filter(
+            retailer=retailer,
+            payment__status='completed'
+        ).aggregate(total=Sum('product_amount'))['total'] or Decimal('0.00')
+
+        return self.success_response(
+            data={
+                "monthly_sales": serializer.data,
+                "lifetime_total_sales": str(lifetime_total),
+                "currency": "GBP"
+            },
+            message="Monthly sales retrieved successfully",
+            status_code=200
+        )
 
 
+'''
 
 
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from django.db.models import Sum, Count
+from django.db.models.functions import ExtractMonth
+from decimal import Decimal
+import calendar
+
+from paymentapp.models import PaymentRetailerSplit
+from paymentapp.serializers import SalesChartSerializer
 
 
+class RetailerMonthlySalesChartView(StandardResponseMixin, APIView):
 
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+
+        user = request.user
+
+        if user.role != "retailer" or not hasattr(user, "retailer_profile"):
+            return self.error_response("Unauthorized", status_code=403)
+
+        retailer = user.retailer_profile
+        from datetime import datetime
+        #year = int(request.query_params.get("year"))
+        year = int(request.query_params.get("year", datetime.now().year))
+
+        queryset = (
+            PaymentRetailerSplit.objects
+            .filter(
+                retailer=retailer,
+                payment__status="pending",
+                payment__created_at__year=year
+            )
+            .annotate(month=ExtractMonth("payment__created_at"))
+            .values("month")
+            .annotate(
+                sales=Sum("product_amount"),
+                orders=Count("payment", distinct=True)
+            )
+        )
+
+        data_map = {row["month"]: row for row in queryset}
+
+        labels = []
+        sales = []
+        orders = []
+
+        for m in range(1, 13):
+
+            labels.append(calendar.month_abbr[m])
+
+            row = data_map.get(m)
+
+            sales.append(row["sales"] if row else Decimal("0.00"))
+            orders.append(row["orders"] if row else 0)
+
+        response_data = {
+            "labels": labels,
+            "sales": sales,
+            "orders": orders
+        }
+
+        serializer = SalesChartSerializer(response_data)
+
+        return self.success_response(
+            data=serializer.data,
+            message="Monthly sales chart retrieved of a specific year",
+            status_code=200
+        )
 
 
 

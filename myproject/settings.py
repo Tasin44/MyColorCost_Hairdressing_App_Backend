@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'paymentapp',
     'affiliateapp',
     # 'productapp',
+    'privacypolicyapp',
 ]
 
 MIDDLEWARE = [
@@ -267,7 +268,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'  # or your preferred location
 AUTH_USER_MODEL = 'authapp.User'#Since you're using a custom User model, make sure you've also set this in your settings.py:
 
 
-
+""
 STRIPE_SECRET_KEY = "sk_test_51SJRZxHPckdqCiP923JxGvV19Hjo8PBdG9CLbIvpOKYMrozDGoPsoXDgbJjPFrlRmOj3eRIAhsUv2Ztxj2xCqXBX00GbEMdfiO" # from your Stripe dashboard
 STRIPE_PUBLIC_KEY = "pk_test_51SJRZxHPckdqCiP90dDxnY7aqJLHWMRbX6hOxHVWnPmnmMzGljcXl5BF3CWwdsQDedCpC6odOm5OuEw9zYJ8m6El00l7mKiOUW" 
 

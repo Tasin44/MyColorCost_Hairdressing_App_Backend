@@ -37,3 +37,34 @@ class RetailerPaymentSummarySerializer(serializers.ModelSerializer):
             'total_transfer_amount', 'transfer_status', 'transfer_id'
         ]
 
+#==============================================================================================================
+#Retailer sales graph api 
+# paymentapp/serializers.py
+from rest_framework import serializers
+from decimal import Decimal
+from .models import PaymentRetailerSplit
+
+class MonthlySalesSerializer(serializers.Serializer):
+    year = serializers.IntegerField()
+    month_index = serializers.IntegerField()  # Jan=0, Feb=1 ... Dec=11
+    month_name = serializers.CharField()
+    total_sales = serializers.DecimalField(max_digits=12, decimal_places=2)
+    order_count = serializers.IntegerField()
+
+
+class SalesChartSerializer(serializers.Serializer):
+    labels = serializers.ListField(child=serializers.CharField())
+    sales = serializers.ListField(child=serializers.DecimalField(max_digits=12, decimal_places=2))
+    orders = serializers.ListField(child=serializers.IntegerField())
+
+
+
+
+
+
+
+
+
+
+
+

@@ -162,7 +162,7 @@ class RetailerProductSerializer(serializers.ModelSerializer):
     Includes retailer-specific fields.
     """
     retailer_name = serializers.CharField(source='retailer.business_name', read_only=True)
-    image_url = serializers.SerializerMethodField()
+    image_url = serializers.SerializerMethodField()#image_url is a SerializerMethodField, not a model field. DRF only uses SerializerMethodField for reading, never for writing.
     def validate_market_price(self, value):
         if value < 0:
             raise serializers.ValidationError("Market price cannot be negative.")
@@ -198,7 +198,30 @@ class RetailerProductSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.image.url)
             return obj.image.url
         return None
+class UpdateRetailerProductSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(required=False)
 
+    class Meta:
+        model = ShopProduct
+        fields = ['name', 'description', 'image', 'market_price', 'quantity', 'barcode', 'vat']
+    '''
+     def get_image_url(self, obj):
+        """Get absolute URL for product image"""
+        if obj.image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+            return obj.image.url
+        return None   
+
+    Reason:
+    Your UpdateRetailerProductSerializer is only meant for updating fields. 
+    You added get_image_url in it, but it is ignored because:
+    get_image_url is a SerializerMethodField pattern, but you didn’t declare image_url = serializers.SerializerMethodField() in this serializer.
+    Without that, DRF never calls get_image_url.
+    So even though you define get_image_url, it does nothing in the update serializer.
+    
+    '''
 
 class CreateRetailerProductSerializer(serializers.ModelSerializer):
     """

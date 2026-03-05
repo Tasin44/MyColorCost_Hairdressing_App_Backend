@@ -687,11 +687,6 @@ class MixListCreateView(StandardResponseMixin, APIView):
         queryset = Mix.objects.filter(user=owner).select_related(
             'client', 'user', 'sub_user'
         ).prefetch_related('mix_products')
-
-        # Base queryset with optimizations
-        queryset = Mix.objects.filter(user=user).select_related(
-            'client', 'user', 'sub_user'
-        ).prefetch_related('mix_products')
  
         # Filter by client
         client_id = request.query_params.get('client_id')
@@ -1021,8 +1016,9 @@ class MixAddProductView(StandardResponseMixin, APIView):
         market_price = validated_data.get('market_price')
         if not market_price:
             market_price = user_product.product.market_price
-        user_price = validated_data['user_price']  # ✅ GET FROM REQUEST
-
+        #user_price = validated_data['user_price']  # ✅ GET FROM REQUEST
+        # USE THIS INSTEAD:
+        user_price = user_product.user_price  # ← always per 100g, never changes
 
         #charged_amount = validated_data['charged_amount']
         # start_bleach_timer = validated_data.get('start_bleach_timer', False)

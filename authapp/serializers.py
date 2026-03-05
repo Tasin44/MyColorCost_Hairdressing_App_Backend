@@ -311,12 +311,12 @@ class SignupSerializer(serializers.Serializer):
     '''
     @staticmethod
     def send_otp_email(email, otp_code):
-        subject = "Your OTP Code for Verification in MyColorCos"
+        subject = "Your OTP Code for Verification in MyColorCost"
         # message = f"Your OTP code is: {otp_code}\nValid for 10 minutes."
         message = f"""
             Hello,
 
-            Thank you for registering with MyColorCost.
+            Thank you for registering with My Colour Cost.
 
             Your One-Time Password (OTP) for account verification is:
 

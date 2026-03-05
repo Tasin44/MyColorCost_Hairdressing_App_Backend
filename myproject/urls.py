@@ -29,6 +29,7 @@ urlpatterns = [
     path('payment/', include('paymentapp.urls')),
     path('affiliate/', include('affiliateapp.urls')),  # ✅ Add this
     path('admin-api/', include('adminapp.urls')),  # ✅ Add this
+    path('terms/', include('privacypolicyapp.urls')),  # ✅ Add this line
 ]
 if settings.DEBUG:
     urlpatterns += static(

@@ -297,11 +297,11 @@ class MixProductInputSerializer(serializers.Serializer):
         decimal_places=2,
         min_value=Decimal('0.01')
     )
-    user_price = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        min_value=Decimal('0.01')
-    )
+    # user_price = serializers.DecimalField(
+    #     max_digits=10,
+    #     decimal_places=2,
+    #     min_value=Decimal('0.01')
+    # )
     market_price = serializers.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -382,11 +382,11 @@ class AddProductToMixSerializer(serializers.Serializer):
     allow_null=True  # ✅ ADD THIS
     )
 
-    user_price = serializers.DecimalField(  # ✅ ADD THIS FIELD
-        max_digits=10,
-        decimal_places=2,
-        min_value=Decimal('0.01')
-    )
+    # user_price = serializers.DecimalField(  # ✅ ADD THIS FIELD
+    #     max_digits=10,
+    #     decimal_places=2,
+    #     min_value=Decimal('0.01')
+    # )
 
 
 
@@ -701,7 +701,8 @@ class CreateMixSerializer(serializers.ModelSerializer):
                 product_name=user_product.product.name,
                 used_weight=product_data['used_weight'],
                 market_price=market_price,
-                user_price=product_data['user_price'],
+                # REMOVE: user_price=product_data['user_price'],
+                user_price=user_product.user_price,  # ← always per 100g
                 # is_bleach_timer_on=is_bleach_timer_on,
                 # bleach_timer_start_time=bleach_timer_start_time if is_bleach_timer_on else None,
                 # bleach_timer_duration=bleach_timer_duration if is_bleach_timer_on else None
@@ -1319,4 +1320,3 @@ class MonthlyBreakdownSerializer(serializers.Serializer):
     income = serializers.DecimalField(max_digits=12, decimal_places=2)
     expense = serializers.DecimalField(max_digits=12, decimal_places=2)
     net_profit = serializers.DecimalField(max_digits=12, decimal_places=2)
-    

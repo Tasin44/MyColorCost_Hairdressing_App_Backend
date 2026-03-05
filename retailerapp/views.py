@@ -18,7 +18,8 @@ from .serializers import (
     RetailerDashboardStatsSerializer, RetailerProductSerializer,
     CreateRetailerProductSerializer, MissingProductSerializer,
     CustomerDeliveryAddressSerializer, RetailerProfilePublicSetupSerializer,
-    RetailerProfileUpdateSerializer, RetailerPublicSerializer   # ✅ THESE TWO# ✅ ADDed 28th feb
+    RetailerProfileUpdateSerializer, RetailerPublicSerializer,   # ✅ THESE TWO# ✅ ADDed 28th feb
+    UpdateRetailerProductSerializer
 )
 import stripe
 from django.conf import settings
@@ -313,33 +314,46 @@ class RetailerProductDetailView(StandardResponseMixin, APIView):
                 "Product not found",
                 status_code=404
             )
+        '''
         
+        '''
         # ✅ Allowed fields for update
-        allowed_fields = [
-            'name', 'description', 'image', 'market_price',
-            'quantity', 'barcode','vat'
-        ]
+        # allowed_fields = [
+        #     'name', 'description', 'image', 'market_price',
+        #     'quantity', 'barcode','vat'
+        # ]
         
-        update_data = {
-            k: v for k, v in request.data.items() if k in allowed_fields
-        }
+        # update_data = {
+        #     k: v for k, v in request.data.items() if k in allowed_fields
+        # }
         
-        serializer = RetailerProductSerializer(
+        # serializer = RetailerProductSerializer(
+        #     product,
+        #     data=update_data,
+        #     partial=True,
+        #     context={'request': request}
+        # )
+        serializer = UpdateRetailerProductSerializer(
             product,
-            data=update_data,
+            data=request.data,
             partial=True,
-            context={'request': request}
-        )
-        
+        ) 
         if serializer.is_valid():
             product = serializer.save()
-            
+            # ✅ Serialize again to get full read fields including image_url
+            response_serializer = RetailerProductSerializer(product, context={'request': request})
             return self.success_response(
-                data=serializer.data,
+                #data=serializer.data,
+                data=response_serializer.data,  # now includes image_url with full base URL
                 message="Product updated successfully",
                 status_code=200
             )
+        '''
+        why response_serializer = RetailerProductSerializer?
         
+        Instead of returning the UpdateRetailerProductSerializer (which only has the raw image field), 
+        you now return RetailerProductSerializer with the request context, which uses the get_image_url method
+        '''
         return self.error_response(
             "Failed to update product",
             status_code=400,
