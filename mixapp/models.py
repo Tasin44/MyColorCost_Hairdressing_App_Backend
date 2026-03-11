@@ -87,7 +87,21 @@ class ShopProduct(models.Model):
         validators=[MinValueValidator(Decimal('0.01'))],
         help_text="Market price per 100g"
     )
- 
+
+    #===========================================================\
+    # ✅ ADD THESE
+    discounted_market_price = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        null=True, blank=True,
+        help_text="Price after discount. None means no discount active"
+    )
+    discount_percentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00')
+    )
+    discount_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00')
+    )
+    #=============================================================/
     # Retailer information
     # retailer_name = models.CharField(max_length=255, null=True, blank=True)
  

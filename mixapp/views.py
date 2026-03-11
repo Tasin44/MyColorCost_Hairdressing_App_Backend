@@ -1927,6 +1927,7 @@ class UpdateScannedProductView(StandardResponseMixin, APIView):
                 
                 # ✅ Update existing - ADD weight
                 user_product.current_weight_grams = validated_data['current_weight_grams']
+                
                 if 'user_price' in validated_data:
                     user_product.user_price = validated_data['user_price']
                 user_product.is_available = user_product.current_weight_grams > 0

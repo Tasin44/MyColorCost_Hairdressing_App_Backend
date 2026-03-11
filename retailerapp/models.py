@@ -293,7 +293,31 @@ class CustomerDeliveryAddress(models.Model):
         
 
 
+# ...existing code...
 
+class DiscountLog(models.Model):
+    """Audit log for bulk discount actions"""
+    DISCOUNT_TYPE_CHOICES = [
+        ('percentage', 'Percentage'),
+        ('amount', 'Amount'),
+    ]
+    
+    retailer = models.ForeignKey(
+        'RetailerProfile',
+        on_delete=models.CASCADE,
+        related_name='discount_logs'
+    )
+    discount_type = models.CharField(max_length=20, choices=DISCOUNT_TYPE_CHOICES)
+    discount_value = models.DecimalField(max_digits=10, decimal_places=2)
+    products_affected = models.IntegerField(default=0)
+    products_skipped = models.IntegerField(default=0, help_text="Products skipped due to price too low")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.retailer.business_name} - {self.discount_type} {self.discount_value} ({self.created_at.date()})"
 
 
 

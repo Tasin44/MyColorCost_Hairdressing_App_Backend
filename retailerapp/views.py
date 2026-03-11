@@ -27,7 +27,7 @@ from django.shortcuts import render, redirect
 stripe.api_key = settings.STRIPE_SECRET_KEY
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import render
-
+from django.db.models import F, ExpressionWrapper, DecimalField as DjDecimalField, Case, When, Q
 class StandardResponseMixin:
     """Mixin for consistent API responses"""
     
@@ -350,7 +350,7 @@ class RetailerProductDetailView(StandardResponseMixin, APIView):
             )
         '''
         why response_serializer = RetailerProductSerializer?
-        
+
         Instead of returning the UpdateRetailerProductSerializer (which only has the raw image field), 
         you now return RetailerProductSerializer with the request context, which uses the get_image_url method
         '''
@@ -1110,11 +1110,278 @@ class RetailerPublicDetailView(StandardResponseMixin, APIView):
             status_code=200
         )
 
+#======================================================================================================\
 
 
+# ...existing code...
 
+from django.db.models import F, ExpressionWrapper, DecimalField as DjDecimalField
+from .serializers import BulkDiscountSerializer
+# ...existing code...
 
+class RetailerBulkDiscountView(StandardResponseMixin, APIView):
+    """
+    Apply bulk discount to all retailer products.
+    discount_type: 'percentage' or 'amount'
+    discount_value: e.g. 2 (means 2% or $2)
+    """
+    permission_classes = [IsAuthenticated]
 
+    def get(self, request):
+        user = request.user
+        if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+            return self.error_response("Unauthorized", status_code=403)
+        
+        retailer = user.retailer_profile
+        from .models import DiscountLog
+        logs = DiscountLog.objects.filter(retailer=retailer)[:10]  # last 10
+        data = [
+            {
+                "discount_type": log.discount_type,
+                "discount_value": str(log.discount_value),
+                "products_affected": log.products_affected,
+                "products_skipped": log.products_skipped,
+                "applied_at": log.created_at,
+            }
+            for log in logs
+        ]
+        return self.success_response(data={"history": data}, message="Discount history", status_code=200)
+    
+    @transaction.atomic
+    def post(self, request):
+        user = request.user
+
+        if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+            return self.error_response("Unauthorized", status_code=403)
+
+        serializer = BulkDiscountSerializer(data=request.data)
+        if not serializer.is_valid():
+
+            # --- NEW LOGIC START ---
+            # Extract all error messages into a single list
+            errors = []
+            error_data = serializer.errors
+            
+            # Check for non-field errors (like the 100% check)
+            if 'non_field_errors' in error_data:
+                errors.extend(error_data['non_field_errors'])
+            
+            # Check for field-specific errors (like negative values)
+            for field, field_errors in error_data.items():
+                if field != 'non_field_errors':
+                    # field_errors is usually a list of strings
+                    errors.extend(field_errors)
+            
+            # Join them into one clear message
+            full_message = "Invalid data: " + "; ".join(errors)
+            # --- NEW LOGIC END ---
+            
+            return self.error_response(
+                full_message,
+                status_code=400,
+                data=serializer.errors
+            )
+
+        retailer = user.retailer_profile
+        discount_type = serializer.validated_data['discount_type']
+        discount_value = serializer.validated_data['discount_value']
+
+        # Get all retailer products
+        products = ShopProduct.objects.filter(retailer=retailer)
+        total_products = products.count()
+
+        affected_count = 0
+        skipped_count = 0
+
+        if total_products == 0:
+            return self.error_response("No products found", status_code=404)
+        
+
+        if discount_type == 'percentage':
+            # Formula: new_price = market_price - (market_price * discount_value / 100)
+            # Only update products where new price will be > 0
+            # market_price * (1 - discount_value/100) > 0 → always true if discount < 100%
+            # But we ensure minimum price of 0.01
+            
+            # Products where reduced price >= 0.01
+            multiplier = Decimal('1') - (discount_value / Decimal('100'))
+            
+            # Filter: only update products where market_price * multiplier >= 0.01
+            eligible = products.filter(
+                Q(discounted_market_price__isnull=False, discounted_market_price__gte=Decimal('0.01') / multiplier) |
+                Q(discounted_market_price__isnull=True, market_price__gte=Decimal('0.01') / multiplier)
+            )
+            affected_count = eligible.count()
+            skipped_count = total_products - eligible.count()
+            # if affected_count > 0:
+            #     eligible.update(
+            #         market_price=ExpressionWrapper(
+            #             F('market_price') * multiplier,
+            #             output_field=DjDecimalField(max_digits=10, decimal_places=2)
+            #         )
+            #     )
+            # if affected_count > 0:
+            #     eligible.update(
+            #         # ✅ market_price untouched, only discounted_price changes
+            #         discounted_market_price=ExpressionWrapper(
+            #             F('base_price') * multiplier,
+            #             output_field=DjDecimalField(max_digits=10, decimal_places=2)
+            #         ),
+            #         discount_percentage=discount_value,
+            #         discount_amount=Decimal('0.00')
+            #     )
+            if affected_count > 0:
+                eligible.update(
+                    discounted_market_price=ExpressionWrapper(
+                        # ✅ Use discounted_market_price if exists, else market_price
+                        Case(
+                            When(discounted_market_price__isnull=False,
+                                 then=F('discounted_market_price') * multiplier),
+                            default=F('market_price') * multiplier,
+                            output_field=DjDecimalField(max_digits=10, decimal_places=2)
+                        ),
+                        output_field=DjDecimalField(max_digits=10, decimal_places=2)
+                    ),
+                    discount_percentage=discount_value,
+                    discount_amount=Decimal('0.00')
+                )
+        else:  # amount
+            # Only update products where market_price > discount_value (to keep price >= 0.01)
+            
+            # eligible = products.filter(market_price__gt=discount_value)
+            eligible = products.filter(
+                Q(discounted_market_price__isnull=False, discounted_market_price__gt=discount_value) |
+                Q(discounted_market_price__isnull=True, market_price__gt=discount_value)
+            )
+            affected_count = eligible.count()
+            skipped_count = total_products - eligible.count()
+            
+            # if affected_count > 0:
+            #     eligible.update(
+            #         market_price=ExpressionWrapper(
+            #             F('market_price') - discount_value,
+            #             output_field=DjDecimalField(max_digits=10, decimal_places=2)
+            #         )
+            #     )
+            # if affected_count > 0:
+            #     eligible.update(
+            #         # ✅ market_price untouched, only discounted_price changes
+            #         discounted_market_price=ExpressionWrapper(
+            #             F('base_price') - discount_value,
+            #             output_field=DjDecimalField(max_digits=10, decimal_places=2)
+            #         ),
+            #         discount_amount=discount_value,
+            #         discount_percentage=Decimal('0.00')
+            #     )
+            if affected_count > 0:
+                eligible.update(
+                    discounted_market_price=ExpressionWrapper(
+                        # ✅ Use discounted_market_price if exists, else market_price
+                        Case(
+                            When(discounted_market_price__isnull=False,
+                                 then=F('discounted_market_price') - discount_value),
+                            default=F('market_price') - discount_value,
+                            output_field=DjDecimalField(max_digits=10, decimal_places=2)
+                        ),
+                        output_field=DjDecimalField(max_digits=10, decimal_places=2)
+                    ),
+                    discount_amount=discount_value,
+                    discount_percentage=Decimal('0.00')
+                )
+        # ✅ Save audit log
+        from .models import DiscountLog
+        DiscountLog.objects.create(
+            retailer=retailer,
+            discount_type=discount_type,
+            discount_value=discount_value,
+            products_affected=affected_count,
+            products_skipped=skipped_count
+        )
+        # Determine the skip reason only if there are skipped products
+        skip_reason = "Skipped products would have price ≤ 0 after discount" if skipped_count > 0 else None
+
+        # Customize the message based on whether any products were actually affected
+        if affected_count == 0 and skipped_count > 0:
+            message = f"No products updated. {skipped_count} products skipped because their price would be ≤ 0 after discount."
+        elif affected_count == 0 and skipped_count == 0:
+            message = "No products matched the criteria for discounting."
+        else:
+            message = f"Discount applied successfully to {affected_count} products. {skipped_count} products skipped because their price would be ≤ 0 after discount."
+
+        return self.success_response(
+            data={
+                "discount_type": discount_type,
+                "discount_value": str(discount_value),
+                "total_products": total_products,
+                "products_affected": affected_count,
+                "products_skipped": skipped_count,
+                # "skip_reason": "Skipped products would have price ≤ 0 after discount" if skipped_count > 0 else None
+                "skip_reason": skip_reason  # This will now correctly show the reason if skipped_count > 0
+            },
+            # message=f"Discount applied successfully to {affected_count} products",
+            message=message,
+            status_code=200
+        )
+
+class RetailerSingleProductDiscountView(StandardResponseMixin, APIView):
+    """Apply discount to a specific product"""
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, product_id):
+        user = request.user
+
+        if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+            return self.error_response("Unauthorized", status_code=403)
+
+        try:
+            product = ShopProduct.objects.get(id=product_id, retailer=user.retailer_profile)
+        except ShopProduct.DoesNotExist:
+            return self.error_response("Product not found", status_code=404)
+
+        serializer = BulkDiscountSerializer(data=request.data)
+        if not serializer.is_valid():
+            return self.error_response("Invalid data", status_code=400, data=serializer.errors)
+
+        discount_type = serializer.validated_data['discount_type']
+        discount_value = serializer.validated_data['discount_value']
+
+        # ✅ Use discounted_market_price as base if it exists, else use market_price
+        base_price = product.discounted_market_price if product.discounted_market_price else product.market_price
+
+        if discount_type == 'percentage':
+            multiplier = Decimal('1') - (discount_value / Decimal('100'))
+            # new_price = product.market_price * multiplier
+            new_price = base_price * multiplier
+            if new_price < Decimal('0.01'):
+                return self.error_response("Discount too high, price would be ≤ 0", status_code=400)
+            product.discounted_market_price = new_price
+            product.discount_percentage = discount_value
+            product.discount_amount = Decimal('0.00')
+
+        else:  # amount
+            # new_price = product.market_price - discount_value
+            new_price = base_price - discount_value
+            if new_price < Decimal('0.01'):
+                return self.error_response("Discount too high, price would be ≤ 0", status_code=400)
+            product.discounted_market_price = new_price
+            product.discount_amount = discount_value
+            product.discount_percentage = Decimal('0.00')
+
+        product.save(update_fields=['market_price','discounted_market_price', 'discount_percentage', 'discount_amount'])
+
+        return self.success_response(
+            data={
+                "product_id": product.id,
+                "product_name": product.name,
+                "market_price": str(product.market_price),        # ✅ base price
+                "discounted_market_price": str(product.discounted_market_price), # ✅ after discount
+                "discount_type": discount_type,
+                "discount_value": str(discount_value),
+            },
+            message="Discount applied to product",
+            status_code=200
+        )
 
 
 

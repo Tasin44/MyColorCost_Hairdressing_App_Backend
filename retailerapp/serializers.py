@@ -181,7 +181,7 @@ class RetailerProductSerializer(serializers.ModelSerializer):
         model = ShopProduct
         fields = [
             'id', 'name', 'description', 'image_url',
-            'market_price', 'quantity', 'stock_status','vat',# ✅ ADDed 28th feb
+            'market_price','discounted_market_price','quantity', 'stock_status','vat',# ✅ ADDed 28th feb
             'retailer_name', 'average_rating', 'total_reviews',
             'created_at', 'updated_at'
         ]
@@ -410,8 +410,34 @@ class RetailerProfilePublicSetupSerializer(serializers.ModelSerializer):
         return retailer_profile
 
 
+#=======================================================================================
 
 
+# ...existing code...
+
+class BulkDiscountSerializer(serializers.Serializer):
+    """Serializer for bulk discount on all retailer products"""
+    
+    DISCOUNT_TYPE_CHOICES = ['percentage', 'amount']
+    
+    discount_type = serializers.ChoiceField(
+        choices=DISCOUNT_TYPE_CHOICES,
+        help_text="'percentage' or 'amount'"
+    )
+    discount_value = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01'),
+        help_text="2 means 2% (percentage) or $2 (amount)"
+    )
+
+    def validate(self, data):
+        if data['discount_type'] == 'percentage':
+            if data['discount_value'] >= 100:
+                raise serializers.ValidationError(
+                    "Percentage discount must be less than 100%"
+                )
+        return data
 
 
 
