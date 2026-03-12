@@ -15,6 +15,7 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
 
+
 class StandardResponseMixin:
     def success_response(self, data=None, message="Success", status_code=200):
         response = {"success": True, "statusCode": status_code, "message": message}
@@ -27,6 +28,8 @@ class StandardResponseMixin:
         if data is not None:
             response["data"] = data
         return Response(response, status=status_code)
+
+
 
 
 # class CreateCheckoutSessionView(StandardResponseMixin, APIView):

@@ -50,6 +50,19 @@ class StandardResponseMixin:
         if data is not None:
             response["data"] = data
         return Response(response, status=status_code)
+    
+    def serializer_error_response(self, errors, status_code=400):
+        """Extract first real error from serializer.errors and use as message"""
+        message = "Validation failed"
+        for field, field_errors in errors.items():
+            if field == 'non_field_errors':
+                message = field_errors[0] if field_errors else message
+                break
+            else:
+                error_text = field_errors[0] if field_errors else str(field_errors)
+                message = f"{field}: {error_text}"
+                break
+        return self.error_response(message, status_code=status_code, data=errors)
 
 
 class RetailerProfileSetupView(StandardResponseMixin, APIView):#❌❌❌This view is not currently using 
@@ -110,12 +123,15 @@ class RetailerProfileSetupView(StandardResponseMixin, APIView):#❌❌❌This vi
                 message="Retailer profile setup completed",
                 status_code=201
             )
-        
+        return self.serializer_error_response(serializer.errors)  # ✅ CHANGED
+    
+        '''
         return self.error_response(
             "Profile setup failed",
             status_code=400,
             data=serializer.errors
         )
+        '''
 
 
 class RetailerDashboardView(StandardResponseMixin, APIView):
@@ -210,7 +226,9 @@ class RetailerProductListView(StandardResponseMixin, APIView):
         return self.success_response(
             data={
                 'products': serializer.data,
-                'total_count': queryset.count()
+                'total_count': queryset.count(),
+                'api_key': retailer.api_key   # ✅ add here
+
             },
             message="Products retrieved",
             status_code=200
@@ -255,11 +273,15 @@ class RetailerProductCreateView(StandardResponseMixin, APIView):
                 status_code=201
             )
         
+        return self.serializer_error_response(serializer.errors)  # ✅ CHANGED
+        '''
         return self.error_response(
             "Failed to create product",
             status_code=400,
             data=serializer.errors
         )
+        '''
+
 
 
 class RetailerProductDetailView(StandardResponseMixin, APIView):
@@ -404,12 +426,13 @@ class MissingProductRequestView(StandardResponseMixin, APIView):
                 message="Product request submitted. We'll notify you when available.",
                 status_code=201
             )
-        
-        return self.error_response(
-            "Failed to submit request",
-            status_code=400,
-            data=serializer.errors
-        )
+        return self.serializer_error_response(serializer.errors)  # ✅ CHANGED
+    
+        # return self.error_response(
+        #     "Failed to submit request",
+        #     status_code=400,
+        #     data=serializer.errors
+        # )
 
 
 class DeliveryAddressListCreateView(StandardResponseMixin, APIView):
@@ -453,12 +476,12 @@ class DeliveryAddressListCreateView(StandardResponseMixin, APIView):
                 message="Delivery address added",
                 status_code=201
             )
-        
-        return self.error_response(
-            "Failed to add address",
-            status_code=400,
-            data=serializer.errors
-        )
+        return self.serializer_error_response(serializer.errors)  # ✅ CHANGED
+        # return self.error_response(
+        #     "Failed to add address",
+        #     status_code=400,
+        #     data=serializer.errors
+        # )
 
 
 #===================================================new views for retailer 
@@ -972,12 +995,12 @@ class RetailerProfilePublicSetupView(StandardResponseMixin, APIView):
                 message="Retailer profile setup completed",
                 status_code=201
             )
-
-        return self.error_response(
-            "Profile setup failed",
-            status_code=400,
-            data=serializer.errors
-        )
+        return self.serializer_error_response(serializer.errors)  # ✅ CHANGED
+        # return self.error_response(
+        #     "Profile setup failed",
+        #     status_code=400,
+        #     data=serializer.errors
+        # )
     def patch(self, request):
         user = request.user
         try:
@@ -998,7 +1021,8 @@ class RetailerProfilePublicSetupView(StandardResponseMixin, APIView):
                 message="Profile updated successfully",
                 status_code=200
             )
-        return self.error_response(serializer.errors, status_code=400)
+        return self.serializer_error_response(serializer.errors)  # ✅ CHANGED
+        #return self.error_response(serializer.errors, status_code=400)
 # ...existing code...
 
 class RetailerMyProfileView(StandardResponseMixin, APIView):
@@ -1341,7 +1365,7 @@ class RetailerSingleProductDiscountView(StandardResponseMixin, APIView):
 
         serializer = BulkDiscountSerializer(data=request.data)
         if not serializer.is_valid():
-            return self.error_response("Invalid data", status_code=400, data=serializer.errors)
+            return self.serializer_error_response(serializer.errors)  # ✅ CHANGED
 
         discount_type = serializer.validated_data['discount_type']
         discount_value = serializer.validated_data['discount_value']

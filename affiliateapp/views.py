@@ -37,7 +37,20 @@ class StandardResponseMixin:
             "message": message,
             "data": data
         }, status=status_code)
-
+    def serializer_error_response(self, errors, status_code=400):
+        """Extract first real error from serializer.errors and use as message"""
+        message = "Validation failed"
+        for field, field_errors in errors.items():
+            if field == 'non_field_errors':
+                message = field_errors[0] if field_errors else message
+                break
+            else:
+                error_text = field_errors[0] if field_errors else str(field_errors)
+                message = f"{field}: {error_text}"
+                break
+        return self.error_response(message, status_code=status_code, data=errors)
+    
+    
 class ReferralDashboardView(StandardResponseMixin, APIView):
     """Get user's referral statistics and earnings"""
     permission_classes = [IsAuthenticated]

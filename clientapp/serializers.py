@@ -214,7 +214,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
             
         if existing.exists():
                 raise serializers.ValidationError({
-                    'contact_number': 'A client with this contact number already exists.'
+                    'A client with this contact number already exists.' 
                 })
         
         return value

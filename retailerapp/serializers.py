@@ -163,6 +163,8 @@ class RetailerProductSerializer(serializers.ModelSerializer):
     """
     retailer_name = serializers.CharField(source='retailer.business_name', read_only=True)
     image_url = serializers.SerializerMethodField()#image_url is a SerializerMethodField, not a model field. DRF only uses SerializerMethodField for reading, never for writing.
+    #api_key = serializers.CharField(source='retailer.api_key', read_only=True)
+
     def validate_market_price(self, value):
         if value < 0:
             raise serializers.ValidationError("Market price cannot be negative.")
@@ -198,6 +200,7 @@ class RetailerProductSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.image.url)
             return obj.image.url
         return None
+
 class UpdateRetailerProductSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(required=False)
 

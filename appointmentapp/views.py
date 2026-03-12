@@ -49,7 +49,18 @@ class StandardResponseMixin:
             "message": message,
             "data": data
         }, status=status_code)
-
+    def serializer_error_response(self, errors, status_code=400):
+        """Extract first real error from serializer.errors and use as message"""
+        message = "Validation failed"
+        for field, field_errors in errors.items():
+            if field == 'non_field_errors':
+                message = field_errors[0] if field_errors else message
+                break
+            else:
+                error_text = field_errors[0] if field_errors else str(field_errors)
+                message = f"{field} Error : {error_text}"
+                break
+        return self.error_response(message, status_code=status_code, data=errors)
 
 class WorkingHoursSetupView(StandardResponseMixin, APIView):
     """
@@ -99,12 +110,14 @@ class WorkingHoursSetupView(StandardResponseMixin, APIView):
                 message="Working hours set successfully",
                 status_code=201
             )
-        
-        return self.error_response(
+        '''
+                return self.error_response(
             "Failed to set working hours",
             status_code=400,
             data=serializer.errors
         )
+        '''
+        return self.serializer_error_response(serializer.errors)  # ✅ CHANGED
     
     def get(self, request):
         """Get current working hours"""
@@ -180,11 +193,15 @@ class AppointmentURLGenerateView(StandardResponseMixin, APIView):
                 status_code=201
             )
         
+        '''
         return self.error_response(
             "Failed to generate appointment URL",
             status_code=400,
             data=serializer.errors
         )
+        '''
+        return self.serializer_error_response(serializer.errors)  # ✅ CHANGED
+
     
     def get(self, request):
         """Get existing appointment URL and services"""
@@ -398,12 +415,15 @@ class AppointmentCreateView(StandardResponseMixin, APIView):
                 message="Appointment created successfully",
                 status_code=201
             )
-        
-        return self.error_response(
-            "Failed to create appointment",
-            status_code=400,
-            data=serializer.errors
-        )
+        return self.serializer_error_response(serializer.errors)  # ✅ CHANGED
+        # '''
+        # return self.error_response(
+        #     "Failed to create appointment",
+        #     status_code=400,
+        #     data=serializer.errors
+        # )
+        # '''
+
 
        #----------------------------------------------- #----------added by me ✅
         #I want to add them during creation , is it possible
@@ -734,11 +754,12 @@ class AppointmentSelfBookingView(StandardResponseMixin, APIView):
         )
         
         if not serializer.is_valid():
-            return self.error_response(
-                "Failed to book appointment",
-                status_code=400,
-                data=serializer.errors
-            )
+            return self.serializer_error_response(serializer.errors)  # ✅ CHANGED
+            # return self.error_response(
+            #     "Failed to book appointment",
+            #     status_code=400,
+            #     data=serializer.errors
+            # )
         
         try:
             appointment = serializer.save()
@@ -1168,12 +1189,12 @@ class AppointmentDetailView(StandardResponseMixin, APIView):
                 data=detail_serializer.data,
                 message="Appointment updated successfully"
             )
-        
-        return self.error_response(
-            "Failed to update appointment",
-            status_code=400,
-            data=serializer.errors
-        )
+        return self.serializer_error_response(serializer.errors)  # ✅ CHANGED
+        # return self.error_response(
+        #     "Failed to update appointment",
+        #     status_code=400,
+        #     data=serializer.errors
+        # )
     
     @transaction.atomic
     def delete(self, request, appointment_id):

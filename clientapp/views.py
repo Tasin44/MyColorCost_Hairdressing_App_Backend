@@ -35,7 +35,18 @@ class StandardResponseMixin:
             "message": message,
             "data": data
         }, status=status_code)
-
+    def serializer_error_response(self, errors, status_code=400):
+        """Extract first real error from serializer.errors and use as message"""
+        message = "Validation failed"
+        for field, field_errors in errors.items():
+            if field == 'non_field_errors':
+                message = field_errors[0] if field_errors else message
+                break
+            else:
+                error_text = field_errors[0] if field_errors else str(field_errors)
+                message = f"{field}: {error_text}"
+                break
+        return self.error_response(message, status_code=status_code, data=errors)
 
 class ClientListCreateView(StandardResponseMixin, APIView):
     """
@@ -192,11 +203,12 @@ class ClientListCreateView(StandardResponseMixin, APIView):
                 status_code=201
             )
         
-        return self.error_response(
-            "Failed to create client",
-            status_code=400,
-            data=serializer.errors
-        )
+        # return self.error_response(
+        #     "Failed to create client",
+        #     status_code=400,
+        #     data=serializer.errors
+        # )
+        return self.serializer_error_response(serializer.errors)  # ✅ CHANGED
 
 
 class ClientDetailView(StandardResponseMixin, APIView):
@@ -318,12 +330,15 @@ class ClientDetailView(StandardResponseMixin, APIView):
                 message="Client updated successfully",
                 status_code=200
             )
-        
+        return self.serializer_error_response(serializer.errors)  # ✅ CHANGED
+        '''
         return self.error_response(
             "Failed to update client",
             status_code=400,
             data=serializer.errors
         )
+        '''
+
     
     @transaction.atomic
     def delete(self, request, client_id):
@@ -412,12 +427,12 @@ class ClientImageUploadView(StandardResponseMixin, APIView):
                 message="Image uploaded successfully",
                 status_code=201
             )
-        
-        return self.error_response(
-            "Failed to upload image",
-            status_code=400,
-            data=serializer.errors
-        )
+        return self.serializer_error_response(serializer.errors)  # ✅ CHANGED
+        # return self.error_response(
+        #     "Failed to upload image",
+        #     status_code=400,
+        #     data=serializer.errors
+        # )
 
 
 class ClientImageListView(StandardResponseMixin, APIView):

@@ -132,8 +132,15 @@ class ShopProductListView(StandardResponseMixin, APIView):
         - retailer_id: Filter by retailer ID (NEW)
         """
         # ✅ ADD select_related for optimization
-        queryset = ShopProduct.objects.select_related('retailer').order_by('-average_rating', 'name')
- 
+        #queryset = ShopProduct.objects.select_related('retailer').order_by('-average_rating', 'name')
+
+         # ✅ ADD: Only show retailer-uploaded products (exclude scanned/manual entry products) + etailer who connected with stripe 
+        queryset = ShopProduct.objects.select_related('retailer').filter(
+            retailer__isnull=False,
+            retailer__is_approved=True,
+            retailer__stripe_connected=True  # ✅ ADD THIS
+        ).order_by('-average_rating', 'name')
+
         # ✅ FIX: Search by name or retailer business name
         search = request.query_params.get('search', '').strip()
         if search:
