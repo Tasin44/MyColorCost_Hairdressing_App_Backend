@@ -169,6 +169,23 @@ class ShopProduct(models.Model):
         default=Decimal('0.00'),
         help_text="VAT percentage (e.g., 15.00 means 15%)"
     )
+
+    #======================================================================================\
+    # ✅ Buy X Get Y Free promo fields
+    promo_buy_quantity = models.IntegerField(
+        null=True, blank=True,
+        help_text="Buy this many (e.g. 5 for buy-5-get-1-free)"
+    )
+    promo_free_quantity = models.IntegerField(
+        null=True, blank=True,
+        help_text="Get this many free (e.g. 1 for buy-5-get-1-free)"
+    )
+    promo_is_active = models.BooleanField(
+        default=False,
+        help_text="Is this promo currently active?"
+    )
+
+    #======================================================================================/
     # ✅ Auto-update stock_status based on quantity
     def save(self, *args, **kwargs):
         # Auto-set stock_status based on quantity

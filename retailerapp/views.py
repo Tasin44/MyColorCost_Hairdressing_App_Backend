@@ -19,7 +19,8 @@ from .serializers import (
     CreateRetailerProductSerializer, MissingProductSerializer,
     CustomerDeliveryAddressSerializer, RetailerProfilePublicSetupSerializer,
     RetailerProfileUpdateSerializer, RetailerPublicSerializer,   # ✅ THESE TWO# ✅ ADDed 28th feb
-    UpdateRetailerProductSerializer
+    UpdateRetailerProductSerializer,
+    ProductPromoSerializer, BulkPromoSerializer
 )
 import stripe
 from django.conf import settings
@@ -28,6 +29,8 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import render
 from django.db.models import F, ExpressionWrapper, DecimalField as DjDecimalField, Case, When, Q
+from .promo_utils import calculate_promo_price
+
 class StandardResponseMixin:
     """Mixin for consistent API responses"""
     
@@ -1409,8 +1412,186 @@ class RetailerSingleProductDiscountView(StandardResponseMixin, APIView):
 
 
 
+#===================================================================================================\
+
+class RetailerSetProductPromoView(StandardResponseMixin, APIView):
+    """
+    Set or clear promo on a SINGLE product.
+    POST   → set promo
+    DELETE → clear promo
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _get_product(self, request, product_id):
+        user = request.user
+        if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+            return None, self.error_response("Unauthorized", status_code=403)
+        try:
+            product = ShopProduct.objects.get(
+                id=product_id,
+                retailer=user.retailer_profile
+            )
+            return product, None
+        except ShopProduct.DoesNotExist:
+            return None, self.error_response("Product not found", status_code=404)
+
+    def post(self, request, product_id):
+        product, err = self._get_product(request, product_id)
+        if err:
+            return err
+
+        serializer = ProductPromoSerializer(data=request.data)
+        if not serializer.is_valid():
+            return self.serializer_error_response(serializer.errors)
+
+        product.promo_buy_quantity = serializer.validated_data['promo_buy_quantity']
+        product.promo_free_quantity = serializer.validated_data['promo_free_quantity']
+        product.promo_is_active = True
+        product.save(update_fields=[
+            'promo_buy_quantity', 'promo_free_quantity', 'promo_is_active'
+        ])
+
+        return self.success_response(
+            data={
+                'product_id': product.id,
+                'product_name': product.name,
+                'promo_label': f"Buy {product.promo_buy_quantity} Get {product.promo_free_quantity} Free",
+                'promo_is_active': True
+            },
+            message="Promo set successfully",
+            status_code=200
+        )
+
+    def delete(self, request, product_id):
+        product, err = self._get_product(request, product_id)
+        if err:
+            return err
+
+        product.promo_buy_quantity = None
+        product.promo_free_quantity = None
+        product.promo_is_active = False
+        product.save(update_fields=[
+            'promo_buy_quantity', 'promo_free_quantity', 'promo_is_active'
+        ])
+
+        return self.success_response(
+            message=f"Promo cleared from '{product.name}'",
+            status_code=200
+        )
 
 
+class RetailerBulkPromoView(StandardResponseMixin, APIView):
+    """
+    Set or clear promo on ALL products or SPECIFIC products by ID list.
+    POST   → set promo   (body: promo_buy_quantity, promo_free_quantity, product_ids[])
+    DELETE → clear promo (body: product_ids[] — empty means clear all)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _get_retailer(self, request):
+        user = request.user
+        if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+            return None, self.error_response("Unauthorized", status_code=403)
+        return user.retailer_profile, None
+
+    @transaction.atomic
+    def post(self, request):
+        retailer, err = self._get_retailer(request)
+        if err:
+            return err
+
+        serializer = BulkPromoSerializer(data=request.data)
+        if not serializer.is_valid():
+            return self.serializer_error_response(serializer.errors)
+
+        buy_qty  = serializer.validated_data['promo_buy_quantity']
+        free_qty = serializer.validated_data['promo_free_quantity']
+        product_ids = serializer.validated_data.get('product_ids', [])
+
+        queryset = ShopProduct.objects.filter(retailer=retailer)
+        if product_ids:
+            queryset = queryset.filter(id__in=product_ids)
+
+        count = queryset.count()
+        if count == 0:
+            return self.error_response("No products found", status_code=404)
+
+        queryset.update(
+            promo_buy_quantity=buy_qty,
+            promo_free_quantity=free_qty,
+            promo_is_active=True
+        )
+
+        scope = f"{count} specific products" if product_ids else f"all {count} products"
+        return self.success_response(
+            data={
+                'products_affected': count,
+                'promo_label': f"Buy {buy_qty} Get {free_qty} Free",
+                'scope': scope
+            },
+            message=f"Promo applied to {count} products",
+            status_code=200
+        )
+
+    @transaction.atomic
+    def delete(self, request):
+        retailer, err = self._get_retailer(request)
+        if err:
+            return err
+
+        product_ids = request.data.get('product_ids', [])
+        queryset = ShopProduct.objects.filter(retailer=retailer)
+        if product_ids:
+            queryset = queryset.filter(id__in=product_ids)
+
+        count = queryset.count()
+        queryset.update(
+            promo_buy_quantity=None,
+            promo_free_quantity=None,
+            promo_is_active=False
+        )
+
+        return self.success_response(
+            data={'products_affected': count},
+            message=f"Promo cleared from {count} products",
+            status_code=200
+        )
+
+
+class RetailerPromoListView(StandardResponseMixin, APIView):
+    """
+    GET: See all products that currently have an active promo.
+    Useful for the retailer dashboard promo management screen.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+            return self.error_response("Unauthorized", status_code=403)
+
+        products = ShopProduct.objects.filter(
+            retailer=user.retailer_profile,
+            promo_is_active=True
+        )
+
+        data = [
+            {
+                'product_id': p.id,
+                'product_name': p.name,
+                'market_price': str(p.market_price),
+                'promo_buy_quantity': p.promo_buy_quantity,
+                'promo_free_quantity': p.promo_free_quantity,
+                'promo_label': f"Buy {p.promo_buy_quantity} Get {p.promo_free_quantity} Free"
+            }
+            for p in products
+        ]
+
+        return self.success_response(
+            data={'promos': data, 'total_count': len(data)},
+            message="Active promos retrieved",
+            status_code=200
+        )
 
 
 

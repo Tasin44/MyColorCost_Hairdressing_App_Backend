@@ -30,142 +30,6 @@ class StandardResponseMixin:
         return Response(response, status=status_code)
 
 
-
-
-# class CreateCheckoutSessionView(StandardResponseMixin, APIView):
-#     """Create Stripe checkout session for cart"""
-#     permission_classes = [IsAuthenticated]
-    
-#     @transaction.atomic
-#     def post(self, request):
-#         user = request.user
-#         delivery_address_id = request.data.get('delivery_address_id')
-        
-#         # Get cart items
-#         cart_items = ShoppingCart.objects.filter(user=user).select_related(
-#             'shop_product__retailer'
-#         )
-        
-#         if not cart_items.exists():
-#             return self.error_response("Cart is empty", status_code=400)
-        
-#         # Group by retailer
-#         retailer_data = {}
-#         total_amount = Decimal('0.00')
-        
-#         for item in cart_items:
-#             retailer = item.shop_product.retailer
-            
-#             if not retailer or not retailer.stripe_connected:
-#                 return self.error_response(
-#                     f"Retailer for {item.shop_product.name} not connected to Stripe",
-#                     status_code=400
-#                 )
-            
-#             if retailer.id not in retailer_data:
-#                 retailer_data[retailer.id] = {
-#                     'retailer': retailer,
-#                     'products': [],
-#                     'product_total': Decimal('0.00'),
-#                     'delivery_charge': retailer.delivery_charge
-#                 }
-            
-#             product_total = item.shop_product.market_price * item.quantity
-#             retailer_data[retailer.id]['products'].append({
-#                 'name': item.shop_product.name,
-#                 'quantity': item.quantity,
-#                 'price': item.shop_product.market_price,
-#                 'total': product_total
-#             })
-#             retailer_data[retailer.id]['product_total'] += product_total
-#             total_amount += product_total
-        
-#         # Calculate delivery
-#         total_delivery = sum(r['delivery_charge'] for r in retailer_data.values())
-        
-#         # Distribute delivery if > £5
-#         if total_delivery > Decimal('5.00'):
-#             for retailer_id, data in retailer_data.items():
-#                 proportion = data['product_total'] / total_amount
-#                 data['delivery_share'] = (total_delivery * proportion).quantize(Decimal('0.01'))
-#         else:
-#             for data in retailer_data.values():
-#                 data['delivery_share'] = data['delivery_charge']
-        
-#         final_total = total_amount + total_delivery
-#         platform_fee = (final_total * Decimal(str(settings.STRIPE_PLATFORM_FEE_PERCENT)) / Decimal('100')).quantize(Decimal('0.01'))
-        
-#         # Create Payment record
-#         from paymentapp.models import Payment
-#         payment = Payment.objects.create(
-#             user=user,
-#             total_amount=final_total,
-#             platform_fee=platform_fee,
-#             delivery_charge=total_delivery,
-#             status='pending'
-#         )
-        
-#         # Create Stripe checkout session
-#         try:
-#             line_items = []
-#             for data in retailer_data.values():
-#                 for product in data['products']:
-#                     line_items.append({
-#                         'price_data': {
-#                             'currency': 'gbp',
-#                             'product_data': {
-#                                 'name': product['name']
-#                             },
-#                             'unit_amount': int(product['price'] * 100)
-#                         },
-#                         'quantity': product['quantity']
-#                     })
-            
-#             # Add delivery as line item
-#             line_items.append({
-#                 'price_data': {
-#                     'currency': 'gbp',
-#                     'product_data': {'name': 'Delivery Charge'},
-#                     'unit_amount': int(total_delivery * 100)
-#                 },
-#                 'quantity': 1
-#             })
-            
-#             session = stripe.checkout.Session.create(
-#                 payment_method_types=['card'],
-#                 line_items=line_items,
-#                 mode='payment',
-#                 success_url=f"{settings.BASE_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
-#                 cancel_url=f"{settings.BASE_URL}/payment/cancel",
-#                 metadata={
-#                     'payment_id': payment.id,
-#                     'user_id': user.id
-#                 },
-#                 payment_intent_data={
-#                     'application_fee_amount': int(platform_fee * 100)
-#                 }
-#             )
-            
-#             payment.checkout_session_id = session.id
-#             payment.save()
-            
-#             return self.success_response(
-#                 data={
-#                     'checkout_url': session.url,
-#                     'session_id': session.id,
-#                     'payment_id': payment.id
-#                 },
-#                 message="Checkout session created",
-#                 status_code=200
-#             )
-        
-#         except stripe.error.StripeError as e:
-#             payment.status = 'failed'
-#             payment.save()
-#             return self.error_response(str(e), status_code=500)
-
-
-
 # REPLACE CreateCheckoutSessionView with this
 
 class CreateCheckoutSessionView(StandardResponseMixin, APIView):
@@ -325,9 +189,28 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
                     'product_total': Decimal('0.00'),
                     'delivery_charge': retailer.delivery_charge
                 }
-            
-            product_total = product.market_price * quantity
 
+            #This is the only place money is calculated. 
+            #product_total = product.market_price * quantity
+
+            #changed the above line with the below snippet for promo
+            #========================================================================\
+            # ✅ Apply Buy X Get Y Free promo if active
+            if (product.promo_is_active
+                    and product.promo_buy_quantity
+                    and product.promo_free_quantity):
+                from retailerapp.promo_utils import calculate_promo_price
+                product_total = calculate_promo_price(
+                    unit_price=product.market_price,
+                    quantity=quantity,
+                    promo_buy_qty=product.promo_buy_quantity,
+                    promo_free_qty=product.promo_free_quantity
+                )
+                promo_label = f"Buy {product.promo_buy_quantity} Get {product.promo_free_quantity} Free"
+            else:
+                product_total = product.market_price * quantity
+                promo_label = None
+            #=========================================================================/
             # retailer_data[retailer.id]['products'].append({
             #     'name': item.shop_product.name,
             #     'quantity': item.quantity,
@@ -339,6 +222,7 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
             'quantity': quantity,
             'price': product.market_price,
             'total': product_total,
+            'promo_label': promo_label,      # ✅ e.g. "Buy 5 Get 1 Free" or None
             'product_obj': product  # ✅ ADD THIS for later use
             })
             retailer_data[retailer.id]['product_total'] += product_total
@@ -349,7 +233,8 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
                 'name': product.name,
                 'quantity': quantity,
                 'price': str(product.market_price),
-                'subtotal': str(product_total)
+                'subtotal': str(product_total),
+                'promo_label': promo_label,        # ✅ show customer what promo was applied
             })
         # Step 4: Calculate delivery charges
         total_delivery = sum(r['delivery_charge'] for r in retailer_data.values())
@@ -382,15 +267,27 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
             line_items = []
             for data in retailer_data.values():
                 for product in data['products']:
+                    
+                    #================================================================\
+                    #Added those lines for promo
+                    # ✅ Build display name — include promo label if active
+                    display_name = product['name']
+                    if product.get('promo_label'):
+                        display_name += f" [{product['promo_label']}]"
+                    #=============================================================  /
+
                     line_items.append({
                         'price_data': {
                             'currency': 'gbp',
                             'product_data': {
-                                'name': product['name']
+                                #'name': product['name']
+                                'name': display_name          # e.g. "Shampoo [Buy 5 Get 1 Free]"
                             },
-                            'unit_amount': int(product['price'] * 100)
+                            #'unit_amount': int(product['price'] * 100) # ✅ already discounted total
+                            'unit_amount': int(product['total'] * 100),  # ✅ already discounted total (220.00)
                         },
-                        'quantity': product['quantity']
+                        #'quantity': product['quantity']# quantity=1 because unit_amount already holds the full total
+                        'quantity': 1                                 # ✅ total already includes quantity
                     })
             
             # Add delivery as line item

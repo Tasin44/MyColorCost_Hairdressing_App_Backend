@@ -13,13 +13,14 @@ from clientapp.models import Client
 class ShopProductListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for product listings"""
     image_url = serializers.SerializerMethodField()
-    retailer_name = serializers.SerializerMethodField()  # ✅ ADD THIS
+    retailer_name = serializers.SerializerMethodField() 
 
     class Meta:
         model = ShopProduct
         fields = [
             'id', 'name', 'image_url','description', 'market_price', 'average_rating', 'total_reviews',
-            'quantity', 'stock_status', 'retailer_name'  ,'vat'# ✅ ADDed 28th feb
+            'quantity', 'stock_status', 'retailer_name'  ,'vat',
+            'promo_is_active', 'promo_buy_quantity', 'promo_free_quantity',  #added for promo
         ]
  
     def get_image_url(self, obj):
@@ -54,7 +55,8 @@ class ShopProductDetailSerializer(serializers.ModelSerializer):
             'market_price', 'average_rating',
             'total_reviews', 'barcode', 'stock_quantity','in_stock','expiry_date', 'created_at','api_data',  # ✅ ADD THIS
             'quantity', 'stock_status', 'retailer_name',  # ✅ ADD THESE
-            'delivery_areas', 'delivery_charge'  # ✅ ADD THESE
+            'delivery_areas', 'delivery_charge' , # ✅ ADD THESE
+            'promo_is_active', 'promo_buy_quantity', 'promo_free_quantity',  #added for promo
         ]
  
     def get_image_url(self, obj):

@@ -443,7 +443,45 @@ class BulkDiscountSerializer(serializers.Serializer):
         return data
 
 
+#=====================================================================================================\
+class ProductPromoSerializer(serializers.Serializer):
+    """Set Buy X Get Y Free promo on a single product"""
+    promo_buy_quantity = serializers.IntegerField(
+        min_value=1,
+        help_text="Customer must buy this many (e.g. 5)"
+    )
+    promo_free_quantity = serializers.IntegerField(
+        min_value=1,
+        help_text="Customer gets this many free (e.g. 1)"
+    )
+
+    def validate(self, data): #this validation will apply when retailer try to set a promo
+        if data['promo_free_quantity'] >= data['promo_buy_quantity']:
+            raise serializers.ValidationError(
+                "Free quantity must be less than buy quantity. "
+                "Example: buy 5 get 1 free — not buy 1 get 5 free."
+            )
+        return data
 
 
+class BulkPromoSerializer(serializers.Serializer):
+    """Apply promo to all products or a specific list"""
+    promo_buy_quantity = serializers.IntegerField(min_value=1)
+    promo_free_quantity = serializers.IntegerField(min_value=1)
+    product_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_empty=True,
+        help_text="Leave empty to apply to ALL products. "
+                  "Pass product IDs to target specific ones."
+    )
 
+    def validate(self, data):
+        if data['promo_free_quantity'] >= data['promo_buy_quantity']:
+            raise serializers.ValidationError(
+                "Free quantity must be less than buy quantity."
+            )
+        return data
+
+#=======================================================================================================/
 

@@ -11,7 +11,10 @@ from .views import (
     RetailerPublicDetailView,       # ✅ # ✅ ADDed 28th feb
     RetailerMyProfileView,   # ✅ ADD THIS
     RetailerBulkDiscountView,
-    RetailerSingleProductDiscountView
+    RetailerSingleProductDiscountView,
+    RetailerSetProductPromoView,
+    RetailerBulkPromoView,
+    RetailerPromoListView,
 )
 
 app_name = 'retailerapp'
@@ -70,5 +73,11 @@ urlpatterns = [
 
      path('retailer/products/bulk-discount/', RetailerBulkDiscountView.as_view(), name='retailer-bulk-discount'),
      path('retailer/products/<int:product_id>/discount/', RetailerSingleProductDiscountView.as_view(), name='retailer-single-discount'),
+
+     #======================================================================================\
+    # ✅ Promo management
+    path('retailer/promos/', RetailerPromoListView.as_view(), name='retailer-promo-list'),
+    path('retailer/promos/bulk/', RetailerBulkPromoView.as_view(), name='retailer-promo-bulk'),
+    path('retailer/promos/product/<int:product_id>/', RetailerSetProductPromoView.as_view(), name='retailer-promo-product'),
 
 ]
