@@ -113,7 +113,7 @@ class SignupView(StandardResponseMixin, APIView):
             data = {
                 "email": user.email,
                 "name": user.name,
-                "otp": otp,  # DEV ONLY
+                # "otp": otp,  # DEV ONLY
                 "contact_number":user.contact_number,
             }
 

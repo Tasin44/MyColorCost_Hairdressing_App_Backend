@@ -314,6 +314,7 @@ class MixProductInputSerializer(serializers.Serializer):
     is_bleach_timer_on = serializers.BooleanField(default=False)
     bleach_timer_start_time = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=50)
     bleach_timer_duration = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=30)
+    user_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)  # ADD THI
 
     def validate_user_product_id(self, value):
         """Validate user product exists and is available"""
@@ -695,7 +696,20 @@ class CreateMixSerializer(serializers.ModelSerializer):
             market_price = product_data.get('market_price')
             if not market_price:
                 market_price = user_product.product.market_price
-            
+
+            raw_user_price = product_data.get('user_price') or user_product.user_price
+            original_weight = user_product.original_weight_grams  # never changes
+            price_per_gram = Decimal(str(raw_user_price)) / original_weight if original_weight > 0 else Decimal('0')
+            print(price_per_gram)
+
+            used_weight = product_data['used_weight']
+            each_item_cost = (price_per_gram * used_weight).quantize(Decimal('0.01'))
+            print(each_item_cost)
+            # if original_weight > 0:
+            #     each_item_cost = (Decimal(str(raw_user_price)) / original_weight * used_weight).quantize(Decimal('0.01'))
+            # else:
+            #     each_item_cost = Decimal('0.00')
+
             # Create mix product
             MixProduct.objects.create(
                 mix=mix,
@@ -703,14 +717,18 @@ class CreateMixSerializer(serializers.ModelSerializer):
                 product_name=user_product.product.name,
                 used_weight=product_data['used_weight'],
                 market_price=market_price,
+
                 # REMOVE: user_price=product_data['user_price'],
-                user_price=user_product.user_price,  # ← always per 100g
-                # is_bleach_timer_on=is_bleach_timer_on,
-                # bleach_timer_start_time=bleach_timer_start_time if is_bleach_timer_on else None,
-                # bleach_timer_duration=bleach_timer_duration if is_bleach_timer_on else None
+                #user_price=user_product.user_price,  # ← always per 100g
+
+                # user_price=product_data.get('user_price') or user_product.user_price,
+                user_price=raw_user_price,  # ✅ Store TOTAL price, not per 100g
+                
                 is_bleach_timer_on=product_data.get('is_bleach_timer_on', False),  # ✅ From product
                 bleach_timer_start_time=product_data.get('bleach_timer_start_time'),  # ✅ From product
-                bleach_timer_duration=product_data.get('bleach_timer_duration')  # ✅ From product
+                bleach_timer_duration=product_data.get('bleach_timer_duration'),  # ✅ From product
+
+                each_item_cost=each_item_cost  # ← SET DIRECTLY
             )
             
             # Reduce product weight
@@ -845,6 +863,7 @@ class BarcodeScanResponseSerializer(serializers.Serializer):
     def get_product(self, obj):
         """Return product data if available"""
         product_data = obj.get('product')
+        
         if product_data:
             # If it's a ShopProduct instance
             if hasattr(product_data, 'id'):

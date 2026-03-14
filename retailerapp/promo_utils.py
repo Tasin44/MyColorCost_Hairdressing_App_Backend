@@ -17,3 +17,30 @@ def calculate_promo_price(unit_price, quantity, promo_buy_qty, promo_free_qty):
     free_items = complete_sets * promo_free_qty
     paid_items = quantity - free_items
     return Decimal(str(unit_price)) * paid_items
+'''
+✅ First one is correct.
+
+If promo = Buy 5 Get 1 Free
+
+Every 6 items → customer pays for 5
+
+If user orders 13 items:
+
+Promo set size = 6
+
+13 ÷ 6 = 2 complete promos
+
+Free items = 2
+
+Paid items = 13 − 2 = 11
+
+✔ Customer receives 13 items
+✔ Customer pays for 11 items
+
+❌ Second option (give 15 items if they order 13) is not standard and almost no ecommerce system works like that.
+
+✅ Final rule used by most systems:
+
+Customer orders quantity → promo reduces the price, not increases the quantity.
+
+'''

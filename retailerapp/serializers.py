@@ -185,11 +185,13 @@ class RetailerProductSerializer(serializers.ModelSerializer):
             'id', 'name', 'description', 'image_url',
             'market_price','discounted_market_price','quantity', 'stock_status','vat',# ✅ ADDed 28th feb
             'retailer_name', 'average_rating', 'total_reviews',
+            'promo_is_active', 'promo_buy_quantity', 'promo_free_quantity',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'retailer_name', 'average_rating',
-            'total_reviews', 'created_at', 'updated_at'
+            'total_reviews', 'promo_is_active', 'promo_buy_quantity', 'promo_free_quantity',
+            'created_at', 'updated_at'
         ]
     
     def get_image_url(self, obj):

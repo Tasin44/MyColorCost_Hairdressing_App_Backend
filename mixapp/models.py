@@ -288,7 +288,13 @@ class UserProduct(models.Model):
         db_index=True,
         help_text="Is product currently available for use"
     )
- 
+    original_weight_grams = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Original weight when product was first added"
+    )
+    
     # Timestamps
     scanned_at = models.DateTimeField(auto_now_add=True)
     last_used_at = models.DateTimeField(null=True, blank=True)
@@ -704,13 +710,26 @@ class MixProduct(models.Model):
             self.user_price * self.used_weight
         ) / Decimal('100')
  
+    # def calculate_cost(self):
+    #     # user_price = total price user paid for the product
+    #     # current_weight_grams = weight BEFORE this usage (since reduce_weight runs after)
+    #     total_weight = self.user_product.current_weight_grams
+    #     if total_weight > 0:
+    #         price_per_gram = self.user_price / total_weight
+    #         self.each_item_cost = (price_per_gram * self.used_weight).quantize(Decimal('0.01'))
+    #     else:
+    #         self.each_item_cost = Decimal('0.00')
+
+    # def save(self, *args, **kwargs):
+    #     # if not self.pk and not self.bleach_timer_started_at:
+    #     #     self.bleach_timer_started_at = timezone.now().isoformat()
+    #     self.calculate_cost()
+    #     super().save(*args, **kwargs)
+
     def save(self, *args, **kwargs):
-        # if not self.pk and not self.bleach_timer_started_at:
-        #     self.bleach_timer_started_at = timezone.now().isoformat()
-        self.calculate_cost()
+        if not self.each_item_cost:  # Only calculate if not already set
+            self.calculate_cost()
         super().save(*args, **kwargs)
-
-
 
 
 #=================================================================

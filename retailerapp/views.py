@@ -1466,18 +1466,23 @@ class RetailerSetProductPromoView(StandardResponseMixin, APIView):
         product, err = self._get_product(request, product_id)
         if err:
             return err
+        if product.promo_is_active == True:
+            product.promo_buy_quantity = None
+            product.promo_free_quantity = None
+            product.promo_is_active = False
+            product.save(update_fields=[
+                'promo_buy_quantity', 'promo_free_quantity', 'promo_is_active'
+            ])
 
-        product.promo_buy_quantity = None
-        product.promo_free_quantity = None
-        product.promo_is_active = False
-        product.save(update_fields=[
-            'promo_buy_quantity', 'promo_free_quantity', 'promo_is_active'
-        ])
-
-        return self.success_response(
-            message=f"Promo cleared from '{product.name}'",
-            status_code=200
-        )
+            return self.success_response(
+                message=f"Promo cleared from '{product.name}'",
+                status_code=200
+            )
+        else: 
+            return self.error_response(
+                message=f"The product '{product.name}' has no ongoing promotion",
+                status_code=400
+            )
 
 
 class RetailerBulkPromoView(StandardResponseMixin, APIView):

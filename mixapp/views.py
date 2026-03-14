@@ -48,69 +48,22 @@ class StandardResponseMixin:
             "data": data
         }, status=status_code)
  
- 
+    def serializer_error_response(self, errors, status_code=400):
+        """Extract first real error from serializer.errors and use as message"""
+        message = "Validation failed"
+        for field, field_errors in errors.items():
+            if field == 'non_field_errors':
+                message = field_errors[0] if field_errors else message
+                break
+            else:
+                error_text = field_errors[0] if field_errors else str(field_errors)
+                message = f"{error_text}"
+                break
+        return self.error_response(message, status_code=status_code, data=errors)
 #$===============================================productapp-views.py===========================================================
 # ============================================
 # SHOP PRODUCTS (Master Catalog)
 # ============================================
- 
-#it was previous
-# class ShopProductListView(StandardResponseMixin, APIView):
-#     """
-#     List all shop products with search and filtering.
-#     These are products that can be scanned and added to inventory.
-#     """
-#     permission_classes = [IsAuthenticated]
- 
-#     def get(self, request):
-#         """
-#         Get product list with optional filtering.
- 
-#         Query params:
-#         - search: Search by name or retailer
-#         - min_rating: Filter by minimum rating
-#         - retailer: Filter by retailer name
-#         """
-#         queryset = ShopProduct.objects.all()
- 
-#         # Search
-#         search = request.query_params.get('search', '').strip()
-#         if search:
-#             queryset = queryset.filter(
-#                 Q(name__icontains=search) |
-#                 Q(retailer_name__icontains=search)
-#             )
- 
-#         # Filter by rating
-#         min_rating = request.query_params.get('min_rating')
-#         if min_rating:
-#             try:
-#                 queryset = queryset.filter(average_rating__gte=float(min_rating))
-#             except ValueError:
-#                 pass
- 
-#         # Filter by retailer
-#         retailer = request.query_params.get('retailer', '').strip()
-#         if retailer:
-#             queryset = queryset.filter(retailer_name__iexact=retailer)
- 
-#         # Order by rating and name
-#         queryset = queryset.order_by('-average_rating', 'name')
- 
-#         serializer = ShopProductListSerializer(
-#             queryset,
-#             many=True,
-#             context={'request': request}
-#         )
- 
-#         return self.success_response(
-#             data={
-#                 'products': serializer.data,
-#                 'total_count': queryset.count()
-#             },
-#             message="Products retrieved successfully",
-#             status_code=200
-#         )
  
 #newly added
 class ShopProductListView(StandardResponseMixin, APIView):
@@ -187,49 +140,7 @@ class ShopProductListView(StandardResponseMixin, APIView):
             status_code=200
         )
 
-#it was previous
-# class ShopProductDetailView(StandardResponseMixin, APIView):
-#     """Get detailed information about a specific product"""
-#     permission_classes = [IsAuthenticated]
- 
-#     def get(self, request, product_id):
-#         """Get product details including reviews"""
-#         try:
-#             product = ShopProduct.objects.prefetch_related('reviews').get(
-#                 id=product_id
-#             )
-#         except ShopProduct.DoesNotExist:
-#             return self.error_response(
-#                 "Product not found",
-#                 status_code=404
-#             )
- 
-#         # Get product details
-#         serializer = ShopProductDetailSerializer(
-#             product,
-#             context={'request': request}
-#         )
- 
-#         # Get recent reviews
-#         recent_reviews = product.reviews.select_related('user').order_by(
-#             '-created_at'
-#         )[:10]
- 
-#         reviews_serializer = ProductReviewSerializer(
-#             recent_reviews,
-#             many=True
-#         )
- 
-#         return self.success_response(
-#             data={
-#                 'product': serializer.data,
-#                 'reviews': reviews_serializer.data,
-#                 'review_count': product.total_reviews
-#             },
-#             message="Product details retrieved successfully",
-#             status_code=200
-#         )
- 
+
 
 #newly added 
 class ShopProductDetailView(StandardResponseMixin, APIView):
@@ -402,12 +313,12 @@ class UserProductListView(StandardResponseMixin, APIView):
                 message="Mix created successfully with all products",
                 status_code=201
             )
- 
-        return self.error_response(
-            "Failed to create mix",
-            status_code=400,
-            data=serializer.errors
-        )
+        return self.serializer_error_response(serializer.errors) 
+        # return self.error_response(
+        #     "Failed to create mix",
+        #     status_code=400,
+        #     data=serializer.errors
+        # )
  
 class UserProductDetailView(StandardResponseMixin, APIView):
     """Get, update, or delete a specific product from user inventory"""
@@ -810,12 +721,12 @@ class MixListCreateView(StandardResponseMixin, APIView):
                 message="Mix created successfully with products.",
                 status_code=201
             )
-        
-        return self.error_response(
-            "Failed to create mix",
-            status_code=400,
-            data=serializer.errors
-        )
+        return self.serializer_error_response(serializer.errors) 
+        # return self.error_response(
+        #     "Failed to create mix",
+        #     status_code=400,
+        #     data=serializer.errors
+        # )
 # Continued in Part 2...
 # mixapp/views.py (Part 2)
  
@@ -1033,7 +944,7 @@ class MixAddProductView(StandardResponseMixin, APIView):
         bleach_timer_start_time = validated_data.get('bleach_timer_start_time')
         bleach_timer_duration = validated_data.get('bleach_timer_duration')
         # Create mix product entry
-        mix_product = MixProduct.objects.create(
+        MixProduct.objects.create(
             mix=mix,
             user_product=user_product,
             product_name=user_product.product.name,
@@ -1793,11 +1704,9 @@ class ManualProductEntryView(StandardResponseMixin, APIView):
                     "Product with this barcode already exists",
                     status_code=400
                 )
-        
+        # ✅ Extract initial weight
+        initial_weight = validated_data['current_weight_grams']
         # Create ShopProduct
-        '''
-        
-        '''
         shop_product = ShopProduct.objects.create(
             name=validated_data['name'],
             description=validated_data.get('description', ''),
@@ -1814,7 +1723,9 @@ class ManualProductEntryView(StandardResponseMixin, APIView):
             user=owner,
             product=shop_product,
             user_price=validated_data['market_price'],  # Default to market price
-            current_weight_grams=validated_data['current_weight_grams'],
+            # user_price=(Decimal(str(validated_data['market_price'])) / initial_weight).quantize(Decimal('0.0001')) if initial_weight > 0 else validated_data['market_price'],
+            current_weight_grams=initial_weight,  # ✅ Current weight
+            original_weight_grams=initial_weight,  # ✅ Original weight (same at start)
             is_available=True
         )
         
@@ -1824,7 +1735,7 @@ class ManualProductEntryView(StandardResponseMixin, APIView):
             user=owner,
             shop_product=shop_product,
             barcode=barcode if barcode else None,
-            scanned_weight=validated_data['current_weight_grams'],
+            scanned_weight=initial_weight,  # ✅ Use extracted weight
             scan_type='manual'
         )
         
