@@ -435,7 +435,13 @@ class BulkDiscountSerializer(serializers.Serializer):
         min_value=Decimal('0.01'),
         help_text="2 means 2% (percentage) or $2 (amount)"
     )
-
+    product_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_empty=True,
+        help_text="Leave empty to apply to ALL products. "
+                  "Pass product IDs to target specific ones."
+    )
     def validate(self, data):
         if data['discount_type'] == 'percentage':
             if data['discount_value'] >= 100:

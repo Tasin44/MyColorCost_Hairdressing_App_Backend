@@ -195,20 +195,24 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
 
             #changed the above line with the below snippet for promo
             #========================================================================\
+            if product.discounted_market_price!='null': 
+                unit_price=product.discounted_market_price
+            else: 
+                unit_price=product.market_price
             # ✅ Apply Buy X Get Y Free promo if active
             if (product.promo_is_active
                     and product.promo_buy_quantity
                     and product.promo_free_quantity):
                 from retailerapp.promo_utils import calculate_promo_price
                 product_total = calculate_promo_price(
-                    unit_price=product.market_price,
+                    unit_price=unit_price,
                     quantity=quantity,
                     promo_buy_qty=product.promo_buy_quantity,
                     promo_free_qty=product.promo_free_quantity
                 )
                 promo_label = f"Buy {product.promo_buy_quantity} Get {product.promo_free_quantity} Free"
             else:
-                product_total = product.market_price * quantity
+                product_total = unit_price * quantity
                 promo_label = None
             #=========================================================================/
             # retailer_data[retailer.id]['products'].append({
@@ -220,7 +224,7 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
             retailer_data[retailer.id]['products'].append({
             'name': product.name,
             'quantity': quantity,
-            'price': product.market_price,
+            'price': unit_price,
             'total': product_total,
             'promo_label': promo_label,      # ✅ e.g. "Buy 5 Get 1 Free" or None
             'product_obj': product  # ✅ ADD THIS for later use
@@ -232,7 +236,8 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
                 'id': product.id,
                 'name': product.name,
                 'quantity': quantity,
-                'price': str(product.market_price),
+                #'price': str(product.market_price),
+                'price': unit_price,
                 'subtotal': str(product_total),
                 'promo_label': promo_label,        # ✅ show customer what promo was applied
             })

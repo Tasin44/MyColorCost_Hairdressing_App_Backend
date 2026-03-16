@@ -18,7 +18,7 @@ class ShopProductListSerializer(serializers.ModelSerializer):
     class Meta:
         model = ShopProduct
         fields = [
-            'id', 'name', 'image_url','description', 'market_price', 'average_rating', 'total_reviews',
+            'id', 'name', 'image_url','description', 'market_price','discounted_market_price','average_rating', 'total_reviews',
             'quantity', 'stock_status', 'retailer_name'  ,'vat',
             'promo_is_active', 'promo_buy_quantity', 'promo_free_quantity',  #added for promo
         ]
@@ -52,7 +52,7 @@ class ShopProductDetailSerializer(serializers.ModelSerializer):
         model = ShopProduct
         fields = [
             'id', 'name', 'description', 'image_url',
-            'market_price', 'average_rating',
+            'market_price','discounted_market_price', 'average_rating',
             'total_reviews', 'barcode', 'stock_quantity','in_stock','expiry_date', 'created_at','api_data',  # ✅ ADD THIS
             'quantity', 'stock_status', 'retailer_name',  # ✅ ADD THESE
             'delivery_areas', 'delivery_charge' , # ✅ ADD THESE
@@ -193,8 +193,6 @@ class CreateUserProductSerializer(serializers.ModelSerializer):
         return user_product
  
 
-
-
 class ShoppingCartSerializer(serializers.ModelSerializer):
     shop_product = ShopProductDetailSerializer(read_only=True)
     shop_product_id = serializers.IntegerField(write_only=True)
@@ -262,8 +260,6 @@ class InventoryStatsSerializer(serializers.Serializer):
     bleach_products = serializers.IntegerField()
     total_inventory_value = serializers.DecimalField(max_digits=12, decimal_places=2)
     category_distribution = serializers.DictField()
-
-
 
 
 
@@ -368,7 +364,6 @@ class MixProductInputSerializer(serializers.Serializer):
         return data
 
 # ...existing code...
-
 
 
 class AddProductToMixSerializer(serializers.Serializer):
@@ -723,7 +718,7 @@ class CreateMixSerializer(serializers.ModelSerializer):
 
                 # user_price=product_data.get('user_price') or user_product.user_price,
                 user_price=raw_user_price,  # ✅ Store TOTAL price, not per 100g
-                
+
                 is_bleach_timer_on=product_data.get('is_bleach_timer_on', False),  # ✅ From product
                 bleach_timer_start_time=product_data.get('bleach_timer_start_time'),  # ✅ From product
                 bleach_timer_duration=product_data.get('bleach_timer_duration'),  # ✅ From product
@@ -935,8 +930,6 @@ class UpdateScannedProductSerializer(serializers.Serializer):
         return data
 
 
-
-
 from rest_framework import serializers
 from .models import Expense
 
@@ -947,10 +940,8 @@ class ExpenseSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'user', 'created_at', 'updated_at']
 
 
-
 #=========================================================================================================================================================
 #Expense overview
-
 
 from rest_framework import serializers
 from django.db.models import Sum, Q
@@ -1147,7 +1138,6 @@ class MonthlyOverviewSerializer(serializers.Serializer):
     #     return overview_data
 
 
-
 # ✅ Move these functions OUTSIDE the serializer class
 def get_single_month_overview(user, month, year):
     """Get data for a specific month and year"""
@@ -1239,7 +1229,6 @@ def get_multiple_months_overview(user, months=12):
 class FinancialOverviewSerializer(serializers.Serializer):
     overview = MonthlyOverviewSerializer(many=True, read_only=True)
     period = serializers.CharField(read_only=True)
-
 
 
 # ============================================================

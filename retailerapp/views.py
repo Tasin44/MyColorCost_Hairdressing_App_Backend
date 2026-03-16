@@ -903,8 +903,6 @@ class RetailerStripeCompleteView(APIView):
             })
 
 
-
-
 class RetailerStripeStatusView(StandardResponseMixin, APIView):
     """Check retailer's Stripe connection status"""
     permission_classes = [IsAuthenticated]
@@ -927,7 +925,6 @@ class RetailerStripeStatusView(StandardResponseMixin, APIView):
             message="Stripe status retrieved",
             status_code=200
         )
-
 
 
 @csrf_exempt
@@ -960,7 +957,6 @@ def retailer_dashboard_view(request):
         "stripe_connected": getattr(retailer, "stripe_connected", False),
     }
     return render(request, 'retailer/dashboard.html', context)
-
 
 
 #========================================================================================================\
@@ -1061,6 +1057,8 @@ class RetailerMyProfileView(StandardResponseMixin, APIView):
             message="Retailer details retrieved successfully",
             status_code=200
         )
+
+
 #===============================================================================\
 # ✅ ADDed 28th feb
 
@@ -1073,9 +1071,15 @@ class RetailerListView(StandardResponseMixin, APIView):
 
     def get(self, request):
         retailers = RetailerProfile.objects.filter(
-            is_approved=True
+            is_approved=True,
+            stripe_connected=True  # ✅ ADD THIS
         ).prefetch_related('delivery_areas')
-
+        #  # ✅ ADD: Only show retailer-uploaded products (exclude scanned/manual entry products) + etailer who connected with stripe 
+        # queryset = ShopProduct.objects.select_related('retailer').filter(
+        #     retailer__isnull=False,
+        #     retailer__is_approved=True,
+        #     retailer__stripe_connected=True  # ✅ ADD THIS
+        # ).order_by('-average_rating', 'name')
         serializer = RetailerPublicSerializer(
             retailers, many=True, context={'request': request}
         )
@@ -1214,7 +1218,13 @@ class RetailerBulkDiscountView(StandardResponseMixin, APIView):
         discount_value = serializer.validated_data['discount_value']
 
         # Get all retailer products
+        #products = ShopProduct.objects.filter(retailer=retailer)
+        product_ids = serializer.validated_data.get('product_ids', [])
+
         products = ShopProduct.objects.filter(retailer=retailer)
+
+        if product_ids:
+            products = products.filter(id__in=product_ids)
         total_products = products.count()
 
         affected_count = 0
@@ -1223,7 +1233,7 @@ class RetailerBulkDiscountView(StandardResponseMixin, APIView):
         if total_products == 0:
             return self.error_response("No products found", status_code=404)
         
-
+        scope = f"{total_products} specific products" if product_ids else f"all {total_products} products"
         if discount_type == 'percentage':
             # Formula: new_price = market_price - (market_price * discount_value / 100)
             # Only update products where new price will be > 0
@@ -1234,29 +1244,36 @@ class RetailerBulkDiscountView(StandardResponseMixin, APIView):
             multiplier = Decimal('1') - (discount_value / Decimal('100'))
             
             # Filter: only update products where market_price * multiplier >= 0.01
+            '''
             eligible = products.filter(
                 Q(discounted_market_price__isnull=False, discounted_market_price__gte=Decimal('0.01') / multiplier) |
                 Q(discounted_market_price__isnull=True, market_price__gte=Decimal('0.01') / multiplier)
             )
+            '''
+            eligible=products.filter(market_price__gte=Decimal('0.01') / multiplier)#because market_price is always the base now.
             affected_count = eligible.count()
             skipped_count = total_products - eligible.count()
-            # if affected_count > 0:
-            #     eligible.update(
-            #         market_price=ExpressionWrapper(
-            #             F('market_price') * multiplier,
-            #             output_field=DjDecimalField(max_digits=10, decimal_places=2)
-            #         )
-            #     )
-            # if affected_count > 0:
-            #     eligible.update(
-            #         # ✅ market_price untouched, only discounted_price changes
-            #         discounted_market_price=ExpressionWrapper(
-            #             F('base_price') * multiplier,
-            #             output_field=DjDecimalField(max_digits=10, decimal_places=2)
-            #         ),
-            #         discount_percentage=discount_value,
-            #         discount_amount=Decimal('0.00')
-            #     )
+            '''
+            if affected_count > 0:
+                eligible.update(
+                    market_price=ExpressionWrapper(
+                        F('market_price') * multiplier,
+                        output_field=DjDecimalField(max_digits=10, decimal_places=2)
+                    )
+                )
+            if affected_count > 0:
+                eligible.update(
+                    # ✅ market_price untouched, only discounted_price changes
+                    discounted_market_price=ExpressionWrapper(
+                        F('base_price') * multiplier,
+                        output_field=DjDecimalField(max_digits=10, decimal_places=2)
+                    ),
+                    discount_percentage=discount_value,
+                    discount_amount=Decimal('0.00')
+                )
+            '''
+
+            '''
             if affected_count > 0:
                 eligible.update(
                     discounted_market_price=ExpressionWrapper(
@@ -1272,35 +1289,51 @@ class RetailerBulkDiscountView(StandardResponseMixin, APIView):
                     discount_percentage=discount_value,
                     discount_amount=Decimal('0.00')
                 )
+            '''
+        if affected_count > 0:
+            eligible.update(
+                discounted_market_price=ExpressionWrapper(
+                    F('market_price') * multiplier,
+                    output_field=DjDecimalField(max_digits=10, decimal_places=2)
+                ),
+                discount_percentage=discount_value,
+                discount_amount=Decimal('0.00')
+            )
         else:  # amount
             # Only update products where market_price > discount_value (to keep price >= 0.01)
             
-            # eligible = products.filter(market_price__gt=discount_value)
+            eligible = products.filter(market_price__gt=discount_value)
+            '''
             eligible = products.filter(
                 Q(discounted_market_price__isnull=False, discounted_market_price__gt=discount_value) |
                 Q(discounted_market_price__isnull=True, market_price__gt=discount_value)
             )
+            '''
+           
             affected_count = eligible.count()
             skipped_count = total_products - eligible.count()
-            
-            # if affected_count > 0:
-            #     eligible.update(
-            #         market_price=ExpressionWrapper(
-            #             F('market_price') - discount_value,
-            #             output_field=DjDecimalField(max_digits=10, decimal_places=2)
-            #         )
-            #     )
-            # if affected_count > 0:
-            #     eligible.update(
-            #         # ✅ market_price untouched, only discounted_price changes
-            #         discounted_market_price=ExpressionWrapper(
-            #             F('base_price') - discount_value,
-            #             output_field=DjDecimalField(max_digits=10, decimal_places=2)
-            #         ),
-            #         discount_amount=discount_value,
-            #         discount_percentage=Decimal('0.00')
-            #     )
+            '''
             if affected_count > 0:
+                eligible.update(
+                    market_price=ExpressionWrapper(
+                        F('market_price') - discount_value,
+                        output_field=DjDecimalField(max_digits=10, decimal_places=2)
+                    )
+                )
+            if affected_count > 0:
+                eligible.update(
+                    # ✅ market_price untouched, only discounted_price changes
+                    discounted_market_price=ExpressionWrapper(
+                        F('base_price') - discount_value,
+                        output_field=DjDecimalField(max_digits=10, decimal_places=2)
+                    ),
+                    discount_amount=discount_value,
+                    discount_percentage=Decimal('0.00')
+                )
+            '''
+
+            if affected_count > 0:
+                '''
                 eligible.update(
                     discounted_market_price=ExpressionWrapper(
                         # ✅ Use discounted_market_price if exists, else market_price
@@ -1310,6 +1343,15 @@ class RetailerBulkDiscountView(StandardResponseMixin, APIView):
                             default=F('market_price') - discount_value,
                             output_field=DjDecimalField(max_digits=10, decimal_places=2)
                         ),
+                        output_field=DjDecimalField(max_digits=10, decimal_places=2)
+                    ),
+                    discount_amount=discount_value,
+                    discount_percentage=Decimal('0.00')
+                )
+                '''
+                eligible.update(
+                    discounted_market_price=ExpressionWrapper(
+                        F('market_price') - discount_value,
                         output_field=DjDecimalField(max_digits=10, decimal_places=2)
                     ),
                     discount_amount=discount_value,
@@ -1332,6 +1374,8 @@ class RetailerBulkDiscountView(StandardResponseMixin, APIView):
             message = f"No products updated. {skipped_count} products skipped because their price would be ≤ 0 after discount."
         elif affected_count == 0 and skipped_count == 0:
             message = "No products matched the criteria for discounting."
+        elif affected_count !=0 and skipped_count == 0:
+            message = f"Discount applied successfully to {affected_count} products."
         else:
             message = f"Discount applied successfully to {affected_count} products. {skipped_count} products skipped because their price would be ≤ 0 after discount."
 
@@ -1349,6 +1393,51 @@ class RetailerBulkDiscountView(StandardResponseMixin, APIView):
             message=message,
             status_code=200
         )
+
+    @transaction.atomic
+    def delete(self, request):
+        user = request.user
+
+        if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+            return self.error_response("Unauthorized", status_code=403)
+
+        retailer = user.retailer_profile
+
+        '''
+        products = ShopProduct.objects.filter(
+            retailer=retailer,
+            discounted_market_price__isnull=False
+        )
+        '''
+        product_ids = request.data.get('product_ids', [])
+
+        products = ShopProduct.objects.filter(
+            retailer=retailer,
+            discounted_market_price__isnull=False
+        )
+
+        if product_ids:
+            products = products.filter(id__in=product_ids)
+
+        total_products = products.count()
+
+        if total_products == 0:
+            return self.error_response("No discounted products found", status_code=404)
+
+        products.update(
+            discounted_market_price=None,
+            discount_percentage=Decimal('0.00'),
+            discount_amount=Decimal('0.00')
+        )
+
+        return self.success_response(
+            data={
+                "products_updated": total_products
+            },
+            message=f"Bulk discount removed from {total_products} products",
+            status_code=200
+        )
+
 
 class RetailerSingleProductDiscountView(StandardResponseMixin, APIView):
     """Apply discount to a specific product"""
@@ -1374,7 +1463,8 @@ class RetailerSingleProductDiscountView(StandardResponseMixin, APIView):
         discount_value = serializer.validated_data['discount_value']
 
         # ✅ Use discounted_market_price as base if it exists, else use market_price
-        base_price = product.discounted_market_price if product.discounted_market_price else product.market_price
+        # base_price = product.discounted_market_price if product.discounted_market_price else product.market_price
+        base_price = product.market_price
 
         if discount_type == 'percentage':
             multiplier = Decimal('1') - (discount_value / Decimal('100'))
@@ -1410,7 +1500,44 @@ class RetailerSingleProductDiscountView(StandardResponseMixin, APIView):
             status_code=200
         )
 
+    @transaction.atomic
+    def delete(self, request, product_id):
+        user = request.user
 
+        if user.role != 'retailer' or not hasattr(user, 'retailer_profile'):
+            return self.error_response("Unauthorized", status_code=403)
+
+        try:
+            product = ShopProduct.objects.get(
+                id=product_id,
+                retailer=user.retailer_profile
+            )
+        except ShopProduct.DoesNotExist:
+            return self.error_response("Product not found", status_code=404)
+
+        if not product.discounted_market_price:
+            return self.error_response("This product has no active discount", status_code=400)
+
+        product.discounted_market_price = None
+        product.discount_percentage = Decimal('0.00')
+        product.discount_amount = Decimal('0.00')
+
+        product.save(update_fields=[
+            'discounted_market_price',
+            'discount_percentage',
+            'discount_amount'
+        ])
+
+        return self.success_response(
+            data={
+                "product_id": product.id,
+                "product_name": product.name,
+                "market_price": str(product.market_price),
+                "discount_removed": True
+            },
+            message=f"Discount removed from {product.name}",
+            status_code=200
+        )
 
 #===================================================================================================\
 

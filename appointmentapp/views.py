@@ -1360,6 +1360,8 @@ class AppointmentStatsView(StandardResponseMixin, APIView):
         )
 
 '''
+
+
 class CleanupOldSlotsView(StandardResponseMixin, APIView):
     """
     Cleanup old time slot bookings (admin/cron job).
