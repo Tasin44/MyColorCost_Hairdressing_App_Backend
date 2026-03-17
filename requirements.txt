@@ -33,4 +33,4 @@ firebase-admin
 openpyxl
 channels 
 channels-redis 
-daphne
+daphnewhitenoise

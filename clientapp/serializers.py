@@ -3,6 +3,9 @@ from rest_framework import serializers
 from django.db import transaction
 from .models import Client, ClientImage
 from datetime import date, datetime
+from django.utils import timezone
+from mixapp.models import Mix
+from appointmentapp.models import Appointment
 
 class ClientImageSerializer(serializers.ModelSerializer):
     """Serializer for client images (before/after photos)"""
@@ -53,6 +56,7 @@ class ClientListSerializer(serializers.ModelSerializer):
     has_images = serializers.SerializerMethodField()
     last_visit_date = serializers.SerializerMethodField()
     next_appointment_date = serializers.SerializerMethodField()
+    total_mixes = serializers.SerializerMethodField()  # ✅ ADD THIS LINE
     profile_image_url = serializers.SerializerMethodField()
     class Meta:
         model = Client
@@ -89,13 +93,46 @@ class ClientListSerializer(serializers.ModelSerializer):
         # Use prefetch_related in view to avoid N+1
         # return obj.images.exists() if hasattr(obj, 'images') else False
         return obj.images.exists()#hasattr(obj, 'images') check is unnecessary,images always exists due to related_name
+   # ✅ THESE ARE THE FIXES
+    def get_total_mixes(self, obj):
+        """Get actual count from related mixes"""
+        return obj.mixes.count()
+    
+    # def get_last_visit_date(self, obj): #it's also working 
+    #     """Get last visit from actual mixes"""
+    #     last_mix = obj.mixes.order_by('-created_at').values_list(
+    #         'created_at', flat=True
+    #     ).first()
+    #     return last_mix.isoformat() if last_mix else None
+    
     def get_last_visit_date(self, obj):
-        """Return default if null"""
-        return obj.last_visit_date or "2026-12-31T00:00:00"
+        """Get last visit from actual mixes - DATE ONLY"""
+        from mixapp.models import Mix
+        last_mix = Mix.objects.filter(
+            client=obj
+        ).order_by('-created_at').values_list('created_at', flat=True).first()
+    
+        # ✅ CHANGE: Use .date() to get only date, not datetime
+        return last_mix.date().isoformat() if last_mix else None
     
     def get_next_appointment_date(self, obj):
-        """Return default if null"""
-        return obj.next_appointment_date or date(2026, 12, 31)
+        """Get next appointment date"""
+        from appointmentapp.models import Appointment
+        from django.utils import timezone
+        
+        next_appt = Appointment.objects.filter(
+            client=obj,
+            appointment_date__gt=timezone.now().date(),
+            status='scheduled'
+        ).order_by('appointment_date', 'appointment_time').first()
+        
+        if next_appt:
+            return next_appt.appointment_date.isoformat()
+        
+        #return obj.next_appointment_date.isoformat() if obj.next_appointment_date else None
+        return None  # ✅ Return None, not model field
+
+
 
 class ClientDetailSerializer(serializers.ModelSerializer):
     """
@@ -107,6 +144,7 @@ class ClientDetailSerializer(serializers.ModelSerializer):
     mix_history = serializers.SerializerMethodField()
     last_visit_date = serializers.SerializerMethodField()
     next_appointment_date = serializers.SerializerMethodField()
+    total_mixes = serializers.SerializerMethodField()  # ✅ CHANGE TO METHOD
     profile_image_url = serializers.SerializerMethodField()
     class Meta:
         model = Client
@@ -155,14 +193,45 @@ class ClientDetailSerializer(serializers.ModelSerializer):
         ).order_by('-created_date', '-created_time')[:10]
         
         return MixListSerializer(recent_mixes, many=True, context=self.context).data
+
+    # ✅ ADD THESE THREE METHODS
+    def get_total_mixes(self, obj):
+        """Get actual count from related mixes"""
+        return obj.mixes.count()
     
     def get_last_visit_date(self, obj):
-        """Return default if null"""
-        return obj.last_visit_date or "2026-12-31"
+        """Get last visit from actual mixes"""
+        from mixapp.models import Mix
+        last_mix = Mix.objects.filter(
+            client=obj
+        ).order_by('-created_at').values_list('created_at', flat=True).first()
+        
+        return last_mix.isoformat() if last_mix else None
     
     def get_next_appointment_date(self, obj):
-        """Return default if null"""
-        return obj.next_appointment_date or date(2026, 12, 31)
+        """Return next appointment date or None"""
+        from appointmentapp.models import Appointment
+        from django.utils import timezone
+        
+        next_appt = Appointment.objects.filter(
+            client=obj,
+            appointment_date__gt=timezone.now().date(),
+            status='scheduled'
+        ).order_by('appointment_date', 'appointment_time').first()
+        
+        if next_appt:
+            return next_appt.appointment_date.isoformat()
+        
+        #return obj.next_appointment_date
+        return None  # ✅ CHANGE THIS
+    
+    # def get_last_visit_date(self, obj):
+    #     """Return default if null"""
+    #     return obj.last_visit_date or "2026-12-31"
+    
+    # def get_next_appointment_date(self, obj):
+    #     """Return default if null"""
+    #     return obj.next_appointment_date or date(2026, 12, 31)
 
 class ClientCreateUpdateSerializer(serializers.ModelSerializer):
     """

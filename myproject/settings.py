@@ -58,6 +58,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -138,7 +139,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
-
+STATIC_FILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 CORS_ALLOW_ALL_ORIGINS = True#allowing all the different origins 
 CORS_ALLOW_CREDENTIALS = True
@@ -183,42 +184,6 @@ REST_FRAMEWORK : Dict[str, Any] = {
         'rest_framework.parsers.JSONParser',
     ],
 }
-
-# Cache configuration (using Redis for production)
-# CACHES = {
-#     'default': {
-#         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-#         'LOCATION': 'redis://127.0.0.1:6379/1',
-#         'OPTIONS': {
-#             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-#         },
-#         'KEY_PREFIX': 'serviceconnect',
-#         'TIMEOUT': 3600,  # 1 hour default timeout
-#     }
-# }
-'''
-✅ Advantages of using Redis for caching
-
--Much faster than hitting the database every time
-
--Reduces database load → improves performance under traffic
-
--Stores data in memory, so responses are almost instant
-
--Perfect for storing frequently requested data (dashboard stats, lists, tokens, etc.)
-
-❌ What happens if you don’t use Redis?
-
--Every request will hit the database directly
-
--Your app becomes slower, especially under high traffic
-
--Higher chance of database overload
-
--Poor performance for pages that need repeated calculations/queries
-
--Redis = speed + reduced DB cost + better scalability.
-'''
 
 
 # Example configuration

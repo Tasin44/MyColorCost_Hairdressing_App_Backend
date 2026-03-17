@@ -72,7 +72,9 @@ class ClientListCreateView(StandardResponseMixin, APIView):
         queryset = Client.objects.select_related(
             'user', 'sub_user'
         ).prefetch_related(
-            'images'  # Prefetch images to check existence
+            'images', # Prefetch images to check existence
+            'mixes',  # ✅ ADD THIS - prefetch mixes
+            'appointments'  # ✅ ADD THIS - prefetch appointments
         )
         
         # Check if request is from sub-user (staff)

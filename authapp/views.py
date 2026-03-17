@@ -78,7 +78,7 @@ def extract_first_error(errors):
     """Extract the first error message from serializer errors dict"""
     for field, messages in errors.items():
         if isinstance(messages, list) and messages:
-            return str(messages[0])
+             return f"{field}: {messages[0]}"
         elif isinstance(messages, str):
             return messages
     return ""
@@ -114,6 +114,7 @@ class SignupView(StandardResponseMixin, APIView):
                 "email": user.email,
                 "name": user.name,
                 # "otp": otp,  # DEV ONLY
+                "account_type": user.role,
                 "contact_number":user.contact_number,
             }
 

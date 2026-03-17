@@ -475,13 +475,14 @@ class AddProductToMixSerializer(serializers.Serializer):
 class MixListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for mix listings"""
     client_name = serializers.CharField(source='client.name', read_only=True)
+    client_id = serializers.IntegerField(source='client.id', read_only=True, allow_null=True)  # ✅ ADD THIS
     product_count = serializers.SerializerMethodField()
     created_by = serializers.SerializerMethodField()
  
     class Meta:
         model = Mix
         fields = [
-            'id', 'mix_name', 'client_name', 'service_type',
+            'id', 'mix_name', 'client_name','client_id', 'service_type',
             'total_cost', 'charged_amount', 'profit',
             'created_date', 'created_time', 'product_count',
             'created_by'
@@ -517,12 +518,13 @@ class MixDetailSerializer(serializers.ModelSerializer):
     client_name = serializers.CharField(source='client.name', read_only=True)
     # client_id = serializers.IntegerField(source='client.id', read_only=True)
     products = MixProductSerializer(source='mix_products', many=True, read_only=True)
+    client_id = serializers.IntegerField(source='client.id', read_only=True, allow_null=True)
     created_by = serializers.SerializerMethodField()
  
     class Meta:
         model = Mix
         fields = [
-            'id', 'mix_name', 'client_name',
+            'id', 'mix_name', 'client_name','client_id',
             'service_type', 'charged_amount', 'total_cost',
             'profit', 'created_date', 'created_time',
             'pdf_url', 'products', 'created_by', 'created_at'

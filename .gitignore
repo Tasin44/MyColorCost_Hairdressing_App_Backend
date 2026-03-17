@@ -1,0 +1,140 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+venvs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+.atom/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+/media
+/staticfiles
+/static
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.pem
+
+# OS
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Node (if using Node.js for frontend)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Docker
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Temporary files
+*.tmp
+*.temp
+
+# Logs
+logs/
+*.log
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Celery
+celerybeat-schedule
+dump.rdb
+
+# VS Code settings
+.vscode/settings.json
+.vscode/launch.json
+
+# pytest
+.pytest_cache/
+.tox/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Mac OS
+._*
+.Spotlight-V100
+.Trashes
+
+# Migration backups (optional)
+migrations/*.py
+!migrations/__init__.py
+!migrations/0001_initial.py
+!migrations/0002_*.py
+
+# SSL certificates
+ssl/
+*.crt
+*.key
+*.pem
+
+# IDE - PyCharm
+*.iml
+
+# Ignore media and static root folders in production
+media/
+staticfiles/

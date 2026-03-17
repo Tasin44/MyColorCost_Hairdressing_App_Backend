@@ -457,6 +457,10 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
         # TODO: Send email notification
         # self.send_appointment_email(appointment)
         
+        # ✅ ADD THIS - Update client's next appointment date
+        client.next_appointment_date = appointment.appointment_date
+        client.save(update_fields=['next_appointment_date', 'updated_at'])
+        
         send_appointment_email(appointment)
         
         return appointment

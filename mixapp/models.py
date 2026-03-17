@@ -263,7 +263,7 @@ class UserProduct(models.Model):
         db_index=True
     )
  
-    # User's custom price per 100g (can be different from market price)
+    # User's custom price for the whole product, not for 100gm
     user_price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
