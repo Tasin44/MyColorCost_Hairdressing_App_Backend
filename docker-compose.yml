@@ -1,6 +1,22 @@
-version: '3.9'
-
 services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-color_grase_db}  # same as Django NAME
+      POSTGRES_USER: ${DB_USER:-lazy_alien}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-aTm8/UyJSFBN}
+    volumes:
+      - postgres_volume:/var/lib/postgresql/data
+    networks:
+      - grace_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-lazy_alien}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # Django Web Application
   web:
     build:
@@ -8,7 +24,8 @@ services:
       dockerfile: Dockerfile
     container_name: grace_web
     command: >
-      sh -c "python manage.py migrate &&
+      sh -c "python manage.py makemigrations &&
+             python manage.py migrate &&
              python manage.py collectstatic --noinput &&
              gunicorn --bind 0.0.0.0:8000 --workers 4 --timeout 120 myproject.wsgi:application"
     volumes:
@@ -17,6 +34,7 @@ services:
       - media_volume:/app/media
       - logs_volume:/app/logs
       - db_volume:/app/db
+
     ports:
       - "8000:8000"
     environment:
@@ -31,29 +49,20 @@ services:
       EMAIL_PORT: ${EMAIL_PORT}
       EMAIL_HOST_USER: ${EMAIL_HOST_USER}
       EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
-    networks:
-      - grace_network
-    restart: unless-stopped
-
-  # Nginx Reverse Proxy
-  nginx:
-    image: nginx:alpine
-    container_name: grace_nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - static_volume:/app/staticfiles:ro
-      - media_volume:/app/media:ro
-      - ./ssl:/etc/nginx/ssl:ro
+      DB_NAME: ${DB_NAME:-color_grase_db}
+      DB_USER: ${DB_USER:-lazy_alien}
+      DB_PASSWORD: ${DB_PASSWORD:-aTm8/UyJSFBN}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-5432}
     depends_on:
-      - web
+      db:
+        condition: service_healthy
     networks:
       - grace_network
     restart: unless-stopped
 
 volumes:
+  postgres_volume:
   db_volume:
   static_volume:
   media_volume:
