@@ -138,3 +138,8 @@ ssl/
 # Ignore media and static root folders in production
 media/
 staticfiles/
+
+
+# Django migrations
+*/migrations/*
+!*/migrations/__init__.py
