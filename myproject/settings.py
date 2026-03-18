@@ -22,7 +22,7 @@ load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-from gunicorn import config
+
 
 
 # Quick-start development settings - unsuitable for production
@@ -103,6 +103,17 @@ DATABASES : Dict[str, Dict[str, Any]] = {
         'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': os.environ.get('DB_NAME', 'color_grase_db'),
+#         'USER': os.environ.get('DB_USER', 'lazy_alien'),
+#         'PASSWORD': os.environ.get('DB_PASSWORD', 'aTm8/UyJSFBN'),
+#         'HOST': os.environ.get('DB_HOST', 'localhost'),
+#         'PORT': os.environ.get('DB_PORT', '5432'),
+#     }
+# }
 
 
 # Password validation
