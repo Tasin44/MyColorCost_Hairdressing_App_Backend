@@ -15,21 +15,26 @@ from datetime import timedelta
 import os
 import stripe
 from typing import Dict, Any , List
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+from gunicorn import config
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-=$mj0-4$vzl@vu453-#1tf51c6&pe%kaf)j^8qjh(*s!@1gm)k'
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-=$mj0-4$vzl@vu453-#1tf51c6&pe%kaf)j^8qjh(*s!@1gm)k')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -118,10 +123,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-CSRF_TRUSTED_ORIGINS = [
-        'https://6zpmb4x8-8015.inc1.devtunnels.ms/',
-        "http://localhost:8015",
-]
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8015').split(',')
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
@@ -206,59 +208,30 @@ SIMPLE_JWT : Dict[str, Any] = {
 
 
 # DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-# # EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-# EMAIL_HOST = 'smtp.gmail.com'
-# EMAIL_PORT = 587
-# EMAIL_USE_TLS = True
-# EMAIL_HOST_USER = 'mdtm20062@gmail.com'  # my Gmail account
-# EMAIL_HOST_PASSWORD = 'gvcumgjelpftdsgb'
-# DEFAULT_FROM_EMAIL = 'MY COLOR COST'
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.office365.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() == 'true'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'MY COLOR COST <ops@mycolourcost.com>')
 
-EMAIL_HOST = 'smtp.office365.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
+AUTH_USER_MODEL = 'authapp.User'
 
-EMAIL_HOST_USER = 'ops@mycolourcost.com'
-EMAIL_HOST_PASSWORD = 'LouisJedDevPatel123!'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-DEFAULT_FROM_EMAIL = 'MY COLOR COST <ops@mycolourcost.com>'
-#==================================================================================/
-
-STATIC_ROOT = BASE_DIR / 'staticfiles'  # or your preferred location
-
-
-AUTH_USER_MODEL = 'authapp.User'#Since you're using a custom User model, make sure you've also set this in your settings.py:
-
-
-""
-STRIPE_SECRET_KEY = "sk_test_51SJRZxHPckdqCiP923JxGvV19Hjo8PBdG9CLbIvpOKYMrozDGoPsoXDgbJjPFrlRmOj3eRIAhsUv2Ztxj2xCqXBX00GbEMdfiO" # from your Stripe dashboard
-STRIPE_PUBLIC_KEY = "pk_test_51SJRZxHPckdqCiP90dDxnY7aqJLHWMRbX6hOxHVWnPmnmMzGljcXl5BF3CWwdsQDedCpC6odOm5OuEw9zYJ8m6El00l7mKiOUW" 
+STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', '')
+STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY', '')
+STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '')
+STRIPE_PLATFORM_FEE_PERCENT = int(os.getenv('STRIPE_PLATFORM_FEE_PERCENT', '5'))
 
 stripe.api_key = STRIPE_SECRET_KEY
 
-STRIPE_WEBHOOK_SECRET='whsec_vMDymKpbvdeU5BWuD0EVY9ZK8GK98YAq' # I got it from stripe dashboard, which is smaller
+BASE_URL = os.getenv('BASE_URL', 'http://localhost:8000')
 
-STRIPE_PLATFORM_FEE_PERCENT = 5
-
-BASE_URL = "https://6zpmb4x8-8015.inc1.devtunnels.ms"
-
-# BASE_URL = "http://10.10.12.14:8000"
-ALLOWED_HOSTS = [
-    "localhost",
-    "127.0.0.1",
-    "6zpmb4x8-8015.inc1.devtunnels.ms",
-    '*',
-]
-
-USE_X_FORWARDED_HOST = True
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-
-
-BARCODE_SPIDER_API_KEY = 'c7942a6929183658052f'
-BARCODE_SPIDER_BASE_URL = 'https://api.barcodespider.com/v1'
+BARCODE_SPIDER_API_KEY = os.getenv('BARCODE_SPIDER_API_KEY', '')
+BARCODE_SPIDER_BASE_URL = os.getenv('BARCODE_SPIDER_BASE_URL', 'https://api.barcodespider.com/v1')
 
 
 
