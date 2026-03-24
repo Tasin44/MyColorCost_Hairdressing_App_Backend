@@ -56,6 +56,7 @@ class AdminDashboardStatsView(StandardResponseMixin, APIView):
         if not user.is_staff and not user.is_superuser:
             return self.error_response("Unauthorized access", status_code=403)
         
+        '''
         # Total revenue (platform fees)
         total_revenue = Payment.objects.filter(
             status='completed'
@@ -71,9 +72,38 @@ class AdminDashboardStatsView(StandardResponseMixin, APIView):
         
         # Total retailers
         total_retailers = RetailerProfile.objects.count()
+        '''
+        # ✅ SUBSCRIPTION REVENUE
+        # Sum of subscription_amount from completed subscriptions
+        subscription_revenue = Subscription.objects.filter(
+            status='active',
+            is_active=True
+        ).aggregate(
+            total=Sum('subscription_amount')
+        )['total'] or Decimal('0.00')
+        
+        # ✅ SHOP REVENUE (Platform Fee)
+        # Platform fee from completed payments (checkout sessions)
+        shop_revenue = Payment.objects.filter(
+            status='completed'
+        ).aggregate(
+            total=Sum('platform_fee')
+        )['total'] or Decimal('0.00')
+        
+        # ✅ TOTAL REVENUE
+        total_revenue = subscription_revenue + shop_revenue
+        
+        # ✅ Additional Stats
+        total_users = User.objects.filter(role__in=['owner', 'self_employed' ,'staff','retailer']).count()
+        total_subscribers = Subscription.objects.filter(
+            is_active=True
+        ).values('user').distinct().count()
+        total_retailers = User.objects.filter(role='retailer').count()
         
         stats = {
             'total_revenue': total_revenue,
+            'subscription_revenue': subscription_revenue,
+            'shop_revenue': shop_revenue,
             'total_users': total_users,
             'total_subscribers': total_subscribers,
             'total_retailers': total_retailers
@@ -87,6 +117,7 @@ class AdminDashboardStatsView(StandardResponseMixin, APIView):
             message="Dashboard stats retrieved"
         )
 
+        
 
 class AdminUserListView(StandardResponseMixin, APIView):
     """List all users (Section 1)"""

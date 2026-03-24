@@ -2,9 +2,14 @@ services:
   # PostgreSQL Database
   db:
     image: postgres:15-alpine
+<<<<<<< HEAD
     container_name: grace_db
     environment:
       POSTGRES_DB: ${DB_NAME:-color_grase_db}
+=======
+    environment:
+      POSTGRES_DB: ${DB_NAME:-color_grase_db}  # same as Django NAME
+>>>>>>> b077fac962a0b557ab25298016b252e6a704f600
       POSTGRES_USER: ${DB_USER:-lazy_alien}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-aTm8/UyJSFBN}
     volumes:

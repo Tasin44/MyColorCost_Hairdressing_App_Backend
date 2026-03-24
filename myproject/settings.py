@@ -107,10 +107,10 @@ DATABASES : Dict[str, Dict[str, Any]] = {
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': os.environ.get('DB_NAME', 'color_grase_db'),
+#         'NAME': os.environ.get('DB_NAME', 'color_grase_db'),  # this must match POSTGRES_DB
 #         'USER': os.environ.get('DB_USER', 'lazy_alien'),
 #         'PASSWORD': os.environ.get('DB_PASSWORD', 'aTm8/UyJSFBN'),
-#         'HOST': os.environ.get('DB_HOST', 'localhost'),
+#         'HOST': os.environ.get('DB_HOST', 'db'),  # must be 'db', not 'localhost'
 #         'PORT': os.environ.get('DB_PORT', '5432'),
 #     }
 # }
@@ -218,7 +218,7 @@ SIMPLE_JWT : Dict[str, Any] = {
 }
 
 
-# DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
 EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.office365.com')

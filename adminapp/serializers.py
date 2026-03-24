@@ -8,6 +8,8 @@ User = get_user_model()
 class DashboardStatsSerializer(serializers.Serializer):
     """Dashboard overview statistics"""
     total_revenue = serializers.DecimalField(max_digits=15, decimal_places=2)
+    subscription_revenue = serializers.DecimalField(max_digits=15, decimal_places=2)  # ✅ ADD THIS
+    shop_revenue = serializers.DecimalField(max_digits=15, decimal_places=2)  # ✅ ADD THIS
     total_users = serializers.IntegerField()
     total_subscribers = serializers.IntegerField()
     total_retailers = serializers.IntegerField()

@@ -134,8 +134,10 @@ class RetailerPublicSerializer(serializers.ModelSerializer):
 
     def get_business_logo_url(self, obj):
         request = self.context.get('request')
-        if obj.business_logo and request:
-            return request.build_absolute_uri(obj.business_logo.url)
+        # if obj.business_logo and request:
+        #     return request.build_absolute_uri(obj.business_logo.url)
+        if obj.business_logo:
+            return f"{settings.BASE_URL}{obj.business_logo.url}"
         return None
 
     def get_delivery_areas(self, obj):
@@ -197,10 +199,11 @@ class RetailerProductSerializer(serializers.ModelSerializer):
     def get_image_url(self, obj):
         """Get absolute URL for product image"""
         if obj.image:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.image.url)
-            return obj.image.url
+            return f"{settings.BASE_URL}{obj.image.url}"
+            # request = self.context.get('request')
+            # if request:
+            #     return request.build_absolute_uri(obj.image.url)
+            #return obj.image.url
         return None
 
 class UpdateRetailerProductSerializer(serializers.ModelSerializer):

@@ -976,9 +976,10 @@ class RetailerProfilePublicSetupView(StandardResponseMixin, APIView):
             # ✅ Build logo URL
             business_logo_url = None
             if retailer_profile.business_logo:
-                business_logo_url = request.build_absolute_uri(
-                    retailer_profile.business_logo.url
-                )
+                business_logo_url = f"{settings.BASE_URL}{retailer_profile.business_logo.url}"
+                # business_logo_url = request.build_absolute_uri(
+                #     retailer_profile.business_logo.url
+                # )
             return self.success_response(
                 data={
                     "email":retailer_profile.user.email,
