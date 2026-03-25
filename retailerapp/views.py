@@ -767,8 +767,8 @@ class RetailerStripeOnboardView(StandardResponseMixin, APIView):
             account_link = stripe.AccountLink.create(
                 account=account_id,
                 type='account_onboarding',
-                refresh_url=f"{settings.BASE_URL}/retailer/stripe/onboard-complete/?onboard=error&account_id={account_id}",
-                return_url=f"{settings.BASE_URL}/retailer/stripe/onboard-complete/?onboard=success&account_id={account_id}"
+                refresh_url=f"{settings.BASE_URL}/retailer/stripe/complete/?onboard=error&account_id={account_id}",
+                return_url=f"{settings.BASE_URL}/retailer/stripe/complete/?onboard=success&account_id={account_id}"
             )
             '''
                         return redirect(account_link.url)

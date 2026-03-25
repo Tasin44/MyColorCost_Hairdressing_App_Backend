@@ -27,6 +27,7 @@ from .serializers import (
     BarcodeScanResponseSerializer, ManualProductEntrySerializer,
     UpdateScannedProductSerializer
 )
+from django.conf import settings
 from mixapp.utils import generate_mix_pdf
  
 class StandardResponseMixin:
@@ -260,7 +261,7 @@ class UserProductListView(StandardResponseMixin, APIView):
                 'id': user_product.id,
                 'product_id': user_product.product.id,
                 'product_name': user_product.product.name,
-                'product_image': request.build_absolute_uri(user_product.product.image.url) if user_product.product.image else None,
+                'product_image': f"{settings.BASE_URL}{user_product.product.image.url}"if user_product.product.image else None,
                 'market_price': str(user_product.product.market_price),
                 'user_price': str(user_product.user_price) if user_product.user_price else None,
                 'current_weight_grams': str(user_product.current_weight_grams),

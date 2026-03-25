@@ -6,7 +6,7 @@ from decimal import Decimal
 from django.core.validators import MinValueValidator
 from .models import ShopProduct, UserProduct, Mix, MixProduct, ProductReview,ShoppingCart
 from clientapp.models import Client
- 
+from django.conf import settings
 #================================================productapp-serializers.py==========================================================================================
 #===================================================================================================================================================================
 
@@ -22,7 +22,7 @@ class ShopProductListSerializer(serializers.ModelSerializer):
             'quantity', 'stock_status', 'retailer_name'  ,'vat',
             'promo_is_active', 'promo_buy_quantity', 'promo_free_quantity',  #added for promo
         ]
- 
+    '''
     def get_image_url(self, obj):
         """Get absolute URL for product image"""
         if obj.image:
@@ -30,6 +30,17 @@ class ShopProductListSerializer(serializers.ModelSerializer):
             if request:
                 return request.build_absolute_uri(obj.image.url)
             return obj.image.url
+        return None
+    '''
+    
+    def get_image_url(self, obj):
+        """Get absolute URL for product image"""
+        if obj.image:
+            return f"{settings.BASE_URL}{obj.image.url}"
+            # request = self.context.get('request')
+            # if request:
+            #     return request.build_absolute_uri(obj.image.url)
+            #return obj.image.url
         return None
     
     # ✅ ADD THIS METHOD
@@ -58,13 +69,24 @@ class ShopProductDetailSerializer(serializers.ModelSerializer):
             'delivery_areas', 'delivery_charge' , # ✅ ADD THESE
             'promo_is_active', 'promo_buy_quantity', 'promo_free_quantity',  #added for promo
         ]
- 
+    
+    '''
     def get_image_url(self, obj):
         if obj.image:
             request = self.context.get('request')
             if request:
                 return request.build_absolute_uri(obj.image.url)
             return obj.image.url
+        return None
+    '''
+    def get_image_url(self, obj):
+        """Get absolute URL for product image"""
+        if obj.image:
+            return f"{settings.BASE_URL}{obj.image.url}"
+            # request = self.context.get('request')
+            # if request:
+            #     return request.build_absolute_uri(obj.image.url)
+            #return obj.image.url
         return None
     # ✅ ADD THIS METHOD
     def get_retailer_name(self, obj):
@@ -109,7 +131,7 @@ class UserProductSerializer(serializers.ModelSerializer):
             'is_available', 'scanned_at', 'last_used_at'
         ]
         read_only_fields = ['id', 'last_used_at']
- 
+    '''
     def get_product_image(self, obj):
         """Get product image URL"""
         if obj.product.image:
@@ -117,6 +139,16 @@ class UserProductSerializer(serializers.ModelSerializer):
             if request:
                 return request.build_absolute_uri(obj.product.image.url)
             return obj.product.image.url
+        return None
+    '''
+    def get_product_image(self, obj):
+        """Get absolute URL for product image"""
+        if obj.image:
+            return f"{settings.BASE_URL}{obj.image.url}"
+            # request = self.context.get('request')
+            # if request:
+            #     return request.build_absolute_uri(obj.image.url)
+            #return obj.image.url
         return None
     # ✅ ADD THIS METHOD
     def get_scanned_at(self, obj):
