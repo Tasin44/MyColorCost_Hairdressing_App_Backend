@@ -143,3 +143,27 @@ staticfiles/
 # Django migrations
 */migrations/*
 !*/migrations/__init__.py
+
+
+# SQL Dump files (Common for Postgres, MySQL, etc.)
+*.sql
+*.dump
+*.data
+
+# Common local database file extensions
+*.db
+*.sqlite
+*.sqlite3
+*.mdb
+*.accdb
+
+# PostgreSQL specific local data folders (if running locally in project root)
+pg_data/
+postgres_data/
+
+# MySQL specific local data folders
+mysql_data/
+
+# Database locks or temporary files
+*.lock
+*.pid

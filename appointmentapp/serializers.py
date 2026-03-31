@@ -271,13 +271,19 @@ class AppointmentURLCreateSerializer(serializers.Serializer):
         )
         # Create service types
         service_objects = []
+        # for service_name in services:
+        #     service = ServiceType.objects.create(
+        #         user=user,
+        #         name=service_name.strip()
+        #     )
+        #     service_objects.append(service)
+
         for service_name in services:
-            service = ServiceType.objects.create(
+            service, created = ServiceType.objects.get_or_create(
                 user=user,
                 name=service_name.strip()
             )
             service_objects.append(service)
-        
         # Return data for response
         return {
             'appointment_url': appointment_url,

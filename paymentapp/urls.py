@@ -5,7 +5,8 @@ from .views import (
     payment_success_view,  # NEW
     payment_cancel_view,    # NEW
     # RetailerMonthlySalesView,
-    RetailerMonthlySalesChartView
+    RetailerMonthlySalesChartView,
+    MyOrdersView
 )
 
 urlpatterns = [
@@ -16,4 +17,6 @@ urlpatterns = [
 
     # path('sales/monthly/', RetailerMonthlySalesView.as_view(), name='retailer-monthly-sales'),
     path("retailer/sales/chart/", RetailerMonthlySalesChartView.as_view()),
+
+    path('my-orders/', MyOrdersView.as_view(), name='my-orders'),
 ]

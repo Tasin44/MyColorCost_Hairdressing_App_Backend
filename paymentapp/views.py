@@ -1038,7 +1038,19 @@ class RetailerMonthlySalesChartView(StandardResponseMixin, APIView):
         )
 
 
+from rest_framework.generics import ListAPIView
+from rest_framework.permissions import IsAuthenticated
+from .models import RetailerOrder
+from .serializers import UserOrderSerializer
 
+class MyOrdersView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = UserOrderSerializer
+
+    def get_queryset(self):
+        return RetailerOrder.objects.filter(
+            payment__user=self.request.user
+        ).select_related('retailer', 'payment').order_by('-created_at')
 
 
 

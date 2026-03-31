@@ -58,7 +58,21 @@ class SalesChartSerializer(serializers.Serializer):
     orders = serializers.ListField(child=serializers.IntegerField())
 
 
+class UserOrderSerializer(serializers.ModelSerializer):
+    retailer_name = serializers.CharField(source='retailer.business_name', read_only=True)
 
+    class Meta:
+        model = RetailerOrder
+        fields = [
+            'id',
+            'product_name',
+            'quantity',
+            'unit_price',
+            'total_amount',
+            'retailer_name',
+            'status',
+            'created_at'
+        ]
 
 
 
