@@ -14,7 +14,7 @@ services:
       - grace_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-lazy_alien}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-lazy_alien} -d ${DB_NAME:-color_grase_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
