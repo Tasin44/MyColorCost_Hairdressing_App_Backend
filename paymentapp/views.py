@@ -393,7 +393,8 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
                         amount=int(transfer_amount * 100),
                         currency='gbp',
                         destination=retailer.stripe_account_id,# ← in development This is a TEST account ID
-                        transfer_group=payment.payment_intent_id,
+                        # transfer_group=payment.payment_intent_id,
+                        transfer_group=str(payment.id),  # payment_intent_id is NULL here, use payment.id
                         metadata={
                             'payment_id': payment.id,
                             'retailer_id': retailer.id
@@ -802,17 +803,17 @@ def handle_successful_payment(session):
             retailer.total_sales += subtotal
             retailer.total_pending += subtotal
             retailer.save(update_fields=['total_orders', 'total_sales', 'total_pending'])
-        except stripe.error.StripeError as e:
-            # Log error but continue with other transfers
-            PaymentRetailerSplit.objects.create(
-                payment=payment,
-                retailer=retailer,
-                product_amount=product_amount,
-                delivery_share=delivery_share,
-                platform_fee_share=platform_fee_share,
-                total_transfer_amount=transfer_amount,
-                transfer_status='failed'
-            )
+        # except stripe.error.StripeError as e:
+        #     # Log error but continue with other transfers
+        #     PaymentRetailerSplit.objects.create(
+        #         payment=payment,
+        #         retailer=retailer,
+        #         product_amount=product_amount,
+        #         delivery_share=delivery_share,
+        #         platform_fee_share=platform_fee_share,
+        #         total_transfer_amount=transfer_amount,
+        #         transfer_status='failed'
+        #     )
     
     # Clear cart
     # cart_items.delete()
@@ -835,14 +836,35 @@ def payment_success_view(request):
         session = stripe.checkout.Session.retrieve(session_id)
         
         # Get payment record
-        payment_id = session['metadata'].get('payment_id')
+        #payment_id = session['metadata'].get('payment_id') #❌❌❌
+        #❌❌Stripe's Python SDK returns objects, not plain dicts. session['metadata'] is a StripeObject, not a regular Python dict, so .get() doesn't work on it.
+
+        payment_id = session.metadata['payment_id']
+        '''
+        The root rule: never call .get() directly on any Stripe object — session, session.metadata, session.payment_method_details are all StripeObject instances, not Python dicts. Use either object.attribute or object['key'] syntax instead.
+
+        '''
         payment = Payment.objects.get(id=payment_id)
         
         # Get card details (if available)
         card_last4 = '****'
-        if session.get('payment_method_details'):
-            card_last4 = session['payment_method_details'].get('card', {}).get('last4', '****')
-        
+        # if session.get('payment_method_details'):
+        #     card_last4 = session['payment_method_details'].get('card', {}).get('last4', '****')
+        '''
+        # ✅ Fix 2: card details aren't on Session object at all
+        # Use payment_intent instead to get card info
+        '''
+
+        try:
+            if session.payment_intent:
+                intent = stripe.PaymentIntent.retrieve(
+                    session.payment_intent,
+                    expand=['payment_method']
+                )
+                card_last4 = intent.payment_method.card.last4 or '****'
+        except Exception:
+            pass  # card_last4 stays as '****', not critical
+
         context = {
             'session_id': session_id,
             'payment_id': payment.id,
@@ -853,9 +875,12 @@ def payment_success_view(request):
         
         return render(request, 'paymentapp/success.html', context)
     
-    except (stripe.error.StripeError, Payment.DoesNotExist):
+    # except (stripe.error.StripeError, Payment.DoesNotExist):
+    #     return render(request, 'paymentapp/cancel.html')
+    except Exception as e:
+        import traceback
+        traceback.print_exc()  # ✅ Shows the REAL error in terminal
         return render(request, 'paymentapp/cancel.html')
-
 
 def payment_cancel_view(request):
     """Render cancel page when payment is cancelled"""

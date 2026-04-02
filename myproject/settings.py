@@ -79,7 +79,10 @@ TEMPLATES: List[Dict[str, Any]]  = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         # 'DIRS': [],
-        'DIRS': [BASE_DIR / 'retailerapp' / 'templates'],  # ✅ ADD THIS
+        'DIRS': [
+            BASE_DIR / 'retailerapp' / 'templates',
+            BASE_DIR / 'paymentapp' / 'templates',  # ✅ ADD THIS
+        ],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
