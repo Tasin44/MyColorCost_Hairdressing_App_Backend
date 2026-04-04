@@ -143,12 +143,10 @@ class UserProductSerializer(serializers.ModelSerializer):
     '''
     def get_product_image(self, obj):
         """Get absolute URL for product image"""
-        if obj.image:
-            return f"{settings.BASE_URL}{obj.image.url}"
-            # request = self.context.get('request')
-            # if request:
-            #     return request.build_absolute_uri(obj.image.url)
-            #return obj.image.url
+        # if obj.image:
+        #     return f"{settings.BASE_URL}{obj.image.url}"
+        if obj.product and obj.product.image:  # ✅ CORRECT - access through product FK
+            return f"{settings.BASE_URL}{obj.product.image.url}"
         return None
     # ✅ ADD THIS METHOD
     def get_scanned_at(self, obj):
