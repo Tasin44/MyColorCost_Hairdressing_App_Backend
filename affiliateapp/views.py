@@ -154,6 +154,18 @@ class SubscriptionStatusView(StandardResponseMixin, APIView):
     def get(self, request):
         user = request.user
         
+        # Free-access override from admin
+        if user.has_active_subscription:
+            return self.success_response(
+                data={
+                    "is_subscribed": True,
+                    "plan_type": "free_access",
+                    "status": "active",
+                    "subscription_details": None
+                },
+                message="Subscription status retrieved"
+            )
+        
         try:
             subscription = user.subscription
             serializer = SubscriptionSerializer(subscription)

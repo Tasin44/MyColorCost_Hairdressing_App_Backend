@@ -195,10 +195,40 @@ class CreateCheckoutSessionView(StandardResponseMixin, APIView):
 
             #changed the above line with the below snippet for promo
             #========================================================================\
-            if product.discounted_market_price!='null': 
+            '''
+            if product.discounted_market_price!='null': ❌❌
                 unit_price=product.discounted_market_price
             else: 
                 unit_price=product.market_price
+            '''
+            '''
+            ❌What actually happened on the above code snippet 
+
+                In Python/Django, missing DB value is None, not the text 'null'.
+                So condition became: None != 'null' → True
+                -Because it is True, Python enters first block:
+                unit_price = product.discounted_market_price # which is None
+                Else block never runs.
+
+                -Then later code does:
+                    product_total = unit_price * quantity
+                which means None * 1 → crash (500)
+
+                So it was not that market_price was None.
+                It was that your code never reached market_price fallback due to wrong comparison target ('null' string).
+            
+            '''
+            if product.discounted_market_price is not None:
+                unit_price = product.discounted_market_price
+            else:
+                unit_price = product.market_price
+                
+            if unit_price is None:
+                delivery_address.delete()
+                return self.error_response(
+                    f"Price missing for product {product.name}",
+                    status_code=400
+                )
             # ✅ Apply Buy X Get Y Free promo if active
             if (product.promo_is_active
                     and product.promo_buy_quantity

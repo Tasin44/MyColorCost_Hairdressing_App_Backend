@@ -7,7 +7,9 @@ from .views import (
     AdminAffiliateUserListView,
     AdminOrderListView,
     AdminMissingProductListView,
-    AdminMissingProductUpdateView
+    AdminMissingProductUpdateView,
+    AdminUserDeleteView,
+    AdminGrantFreeAccessView
 )
 
 urlpatterns = [
@@ -30,4 +32,7 @@ urlpatterns = [
     # Section 5: Missing products
     path('missing-products/', AdminMissingProductListView.as_view(), name='admin-missing-products'),
     path('missing-products/<int:product_id>/', AdminMissingProductUpdateView.as_view(), name='admin-missing-product-update'),
+
+    path("users/delete/", AdminUserDeleteView.as_view(), name="admin-user-delete"),
+    path("users/free-access/", AdminGrantFreeAccessView.as_view(), name="admin-user-free-access"),
 ]

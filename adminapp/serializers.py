@@ -89,3 +89,13 @@ class MissingProductRequestSerializer(serializers.Serializer):
     additional_notes = serializers.CharField()
     status = serializers.CharField()
     created_at = serializers.DateTimeField()
+
+
+class AdminUserDeleteSerializer(serializers.Serializer):
+    user_id = serializers.UUIDField()
+    hard_delete = serializers.BooleanField(default=True)
+
+
+class AdminGrantFreeAccessSerializer(serializers.Serializer):
+    user_id = serializers.UUIDField()
+    grant_free_access = serializers.BooleanField(default=True)

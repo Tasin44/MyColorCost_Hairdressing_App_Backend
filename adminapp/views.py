@@ -4,6 +4,7 @@ from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.db import transaction
 from django.db.models import Sum, Count, Q
 from django.contrib.auth import get_user_model
 from decimal import Decimal
@@ -23,7 +24,9 @@ from .serializers import (
     RetailerApprovalSerializer,
     AffiliateUserSerializer,
     OrderListSerializer,
-    MissingProductRequestSerializer
+    MissingProductRequestSerializer,
+    AdminUserDeleteSerializer,
+    AdminGrantFreeAccessSerializer
 )
 
 
@@ -438,4 +441,85 @@ class AdminMissingProductUpdateView(StandardResponseMixin, APIView):
     
 
 
+class AdminUserDeleteView(StandardResponseMixin, APIView):
+    permission_classes = [IsAuthenticated]
 
+    @transaction.atomic
+    def delete(self, request):
+        admin_user = request.user
+        if not admin_user.is_staff and not admin_user.is_superuser:
+            return self.error_response("Unauthorized access", status_code=403)
+
+        serializer = AdminUserDeleteSerializer(data=request.data)
+        if not serializer.is_valid():
+            return self.error_response("Invalid data", status_code=400, data=serializer.errors)
+
+        user_id = serializer.validated_data["user_id"]
+
+        try:
+            target_user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return self.error_response("User not found", status_code=404)
+
+        if target_user.id == admin_user.id:
+            return self.error_response("You cannot delete your own admin account", status_code=400)
+
+        if target_user.is_superuser:
+            return self.error_response("You cannot delete another superuser", status_code=400)
+
+        deleted_user_email = target_user.email
+        target_user.delete()
+
+        return self.success_response(
+            data={"deleted_user_id": str(user_id), "deleted_user_email": deleted_user_email},
+            message="User deleted successfully",
+            status_code=200
+        )
+
+class AdminGrantFreeAccessView(StandardResponseMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def patch(self, request):
+        admin_user = request.user
+        if not admin_user.is_staff and not admin_user.is_superuser:
+            return self.error_response("Unauthorized access", status_code=403)
+
+        serializer = AdminGrantFreeAccessSerializer(data=request.data)
+        if not serializer.is_valid():
+            return self.error_response("Invalid data", status_code=400, data=serializer.errors)
+
+        user_id = serializer.validated_data["user_id"]
+        grant = serializer.validated_data["grant_free_access"]
+
+        try:
+            target_user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return self.error_response("User not found", status_code=404)
+
+        target_user.has_active_subscription = grant
+        target_user.subscription_expires_at = None if grant else target_user.subscription_expires_at
+        target_user.save(update_fields=["has_active_subscription", "subscription_expires_at", "updated_at"])
+
+        # Optional: sync Subscription row if it exists
+        try:
+            subscription = target_user.subscription
+            if grant:
+                subscription.is_active = True
+                subscription.status = "active"
+            else:
+                subscription.is_active = False
+                subscription.status = "expired"
+            subscription.save(update_fields=["is_active", "status", "updated_at"])
+        except Exception:
+            pass
+
+        return self.success_response(
+            data={
+                "user_id": str(target_user.id),
+                "email": target_user.email,
+                "has_active_subscription": target_user.has_active_subscription
+            },
+            message="Free access updated successfully",
+            status_code=200
+        )
