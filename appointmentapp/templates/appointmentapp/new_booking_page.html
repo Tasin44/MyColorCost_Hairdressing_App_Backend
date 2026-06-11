@@ -1,0 +1,768 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book Salon Appointment - My Colour Cost</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #9333EA;
+            --primary-light: #C084FC;
+            --secondary: #EC4899;
+            --background: #0B0F19;
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-main: #F3F4F6;
+            --text-muted: #9CA3AF;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: radial-gradient(circle at top right, #1E1B4B 0%, var(--background) 60%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 650px;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 40px 30px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo-container {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .brand-logo {
+            max-width: 160px;
+            height: auto;
+            filter: drop-shadow(0 0 8px rgba(147, 51, 234, 0.3));
+            animation: pulse 3s infinite ease-in-out;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.03);
+            }
+        }
+
+        .salon-title {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(to right, var(--primary-light), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+            margin-bottom: 25px;
+            letter-spacing: 0.5px;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        input[type="text"],
+        input[type="tel"],
+        input[type="email"],
+        input[type="date"] {
+            width: 100%;
+            padding: 14px 18px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            color: white;
+            font-size: 15px;
+            font-family: inherit;
+            transition: all 0.3s ease;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary-light);
+            background: rgba(255, 255, 255, 0.05);
+            box-shadow: 0 0 12px rgba(192, 132, 252, 0.2);
+        }
+
+        /* Services grid */
+        .services-list {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            max-height: 280px;
+            overflow-y: auto;
+            padding-right: 5px;
+            margin-bottom: 15px;
+        }
+
+        /* Custom Scrollbar for Services List */
+        .services-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .services-list::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 10px;
+        }
+
+        .services-list::-webkit-scrollbar-thumb {
+            background: var(--card-border);
+            border-radius: 10px;
+        }
+
+        .service-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            position: relative;
+        }
+
+        .service-card:hover {
+            border-color: rgba(192, 132, 252, 0.4);
+            transform: translateX(4px);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .service-card.selected {
+            background: rgba(147, 51, 234, 0.1);
+            border-color: var(--primary-light);
+            box-shadow: 0 0 15px rgba(147, 51, 234, 0.15);
+        }
+
+        .service-checkbox {
+            margin-top: 3px;
+            accent-color: var(--primary-light);
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .service-info {
+            flex-grow: 1;
+        }
+
+        .service-name {
+            font-weight: 600;
+            font-size: 15px;
+            margin-bottom: 4px;
+            color: white;
+        }
+
+        .service-desc-wrapper {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+
+        .service-card.selected .service-desc-wrapper {
+            max-height: 100px;
+            margin-bottom: 8px;
+        }
+
+        .service-desc {
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .service-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .meta-duration {
+            color: var(--primary-light);
+        }
+
+        .meta-price {
+            color: var(--secondary);
+        }
+
+        /* Summary panel */
+        .summary-panel {
+            background: rgba(147, 51, 234, 0.05);
+            border: 1px dashed rgba(147, 51, 234, 0.2);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 25px;
+            font-size: 14px;
+            display: none;
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+
+        .summary-row:last-child {
+            margin-bottom: 0;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            font-weight: 600;
+            color: white;
+        }
+
+        /* Time slots */
+        .time-slots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(85px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .time-slot-pill {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            padding: 12px 6px;
+            text-align: center;
+            font-size: 13.5px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .time-slot-pill:hover:not(.unavailable) {
+            border-color: var(--primary-light);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .time-slot-pill.selected {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-color: transparent;
+            color: white;
+            box-shadow: 0 0 15px rgba(236, 72, 153, 0.3);
+        }
+
+        .time-slot-pill.unavailable {
+            background: rgba(255, 255, 255, 0.01);
+            color: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.02);
+            cursor: not-allowed;
+        }
+
+        .off-day-alert {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: #F87171;
+            padding: 12px 16px;
+            border-radius: 12px;
+            text-align: center;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 20px -10px rgba(236, 72, 153, 0.4);
+            margin-top: 15px;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 25px -10px rgba(236, 72, 153, 0.5);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        .loading-spinner {
+            text-align: center;
+            padding: 40px;
+            color: var(--primary-light);
+            font-weight: 500;
+        }
+
+        .error-banner {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #F87171;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .success-banner {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #34D399;
+            padding: 20px;
+            border-radius: 16px;
+            text-align: center;
+            font-size: 16px;
+            margin-bottom: 25px;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .success-banner h3 {
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="logo-container">
+            <img src="/media/logo/mycolourcost_logo.png" alt="My Colour Cost Logo" class="brand-logo">
+        </div>
+
+        <div id="loading" class="loading-spinner">Loading Salon Details...</div>
+        <div id="error-box" class="error-banner" style="display: none;"></div>
+
+        <div id="booking-form-wrapper" style="display: none;">
+            <div class="salon-title" id="salon-title"></div>
+
+            <div id="success-box" class="success-banner" style="display: none;">
+                <h3>✓ Appointment Requested Successfully</h3>
+                <p>A confirmation email has been sent to your address.</p>
+            </div>
+
+            <form id="booking-form">
+                {% csrf_token %}
+
+                <div class="form-group">
+                    <label for="client_name">Full Name *</label>
+                    <input type="text" id="client_name" name="client_name" required
+                        placeholder="Enter your first and last name">
+                </div>
+
+                <div class="form-group">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div>
+                            <label for="client_contact">Phone Number *</label>
+                            <input type="tel" id="client_contact" name="client_contact" required
+                                placeholder="e.g., 01712345678">
+                        </div>
+                        <div>
+                            <label for="client_email">Email Address *</label>
+                            <input type="email" id="client_email" name="client_email" required
+                                placeholder="name@domain.com">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <div class="section-title">Select Services (Pick one or multiple) *</div>
+                    <div class="services-list" id="services-container"></div>
+                </div>
+
+                <div class="summary-panel" id="summary-panel">
+                    <div class="summary-row">
+                        <span>Selected Services Count:</span>
+                        <span id="summary-count">0</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Estimated Total Duration:</span>
+                        <span id="summary-duration">0 mins</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Total Price:</span>
+                        <span id="summary-price">$0.00</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="appointment_date">Select Date *</label>
+                    <input type="date" id="appointment_date" name="appointment_date" required>
+                    <div id="off-day-alert" class="off-day-alert" style="display: none;"></div>
+                </div>
+
+                <div class="form-group" id="time-container" style="display: none;">
+                    <div class="section-title">Select Available Time *</div>
+                    <div id="time-slots" class="time-slots-grid"></div>
+                    <input type="hidden" id="appointment_time" name="appointment_time" required>
+                </div>
+
+                <button type="submit" class="submit-btn" id="submit-btn">Confirm Appointment</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const segments = window.location.pathname.split('/').filter(Boolean);
+        const bookIndex = segments.indexOf('book');
+        const token = bookIndex !== -1 && segments.length > bookIndex + 1 ? segments[bookIndex + 1] : null;
+
+        // Dynamically compute paths to work with any base URL subpath/reverse proxy
+        const newIndex = segments.indexOf('new');
+        const apiBasePath = '/' + segments.slice(0, newIndex + 1).join('/') + '/data/';
+        const apptIndex = segments.indexOf('appointment');
+        const baseApptPath = apptIndex !== -1 ? '/' + segments.slice(0, apptIndex + 1).join('/') : '/appointment';
+
+        let salonInfo = null;
+        let selectedServices = new Set();
+        let selectedTime = null;
+
+        // Initialize and load data
+        async function init() {
+            try {
+                const response = await fetch(apiBasePath);
+                const result = await response.json();
+
+                if (!result.success) {
+                    showError(result.message || "Failed to load salon details.");
+                    return;
+                }
+
+                salonInfo = result.data;
+                document.getElementById('salon-title').textContent = salonInfo.salon_name;
+
+                renderServices(salonInfo.services);
+
+                // Set calendar minimum date to today
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('appointment_date').setAttribute('min', today);
+
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('booking-form-wrapper').style.display = 'block';
+
+            } catch (err) {
+                showError("Connection error. Please check your internet connection.");
+            }
+        }
+
+        function showError(msg) {
+            document.getElementById('loading').style.display = 'none';
+            const errBox = document.getElementById('error-box');
+            errBox.textContent = msg;
+            errBox.style.display = 'block';
+        }
+
+        function renderServices(services) {
+            const container = document.getElementById('services-container');
+            container.innerHTML = '';
+
+            if (!services || services.length === 0) {
+                container.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted);">No services configured.</div>';
+                return;
+            }
+
+            services.forEach(service => {
+                const card = document.createElement('div');
+                card.className = 'service-card';
+                card.dataset.id = service.id;
+                card.dataset.minutes = service.service_time_minutes;
+                card.dataset.fee = service.service_fee || 0;
+                card.dataset.name = service.name;
+
+                const priceText = service.price_type === 'free' ? 'Free' :
+                    (service.price_type === 'from' ? `From $${service.service_fee}` : `$${service.service_fee}`);
+
+                card.innerHTML = `
+                    <input type="checkbox" class="service-checkbox" id="check-${service.id}">
+                    <div class="service-info">
+                        <div class="service-name">${service.name}</div>
+                        <div class="service-desc-wrapper">
+                            <div class="service-desc">${service.description || 'No description available.'}</div>
+                        </div>
+                        <div class="service-meta">
+                            <span class="meta-duration">⏱ ${service.service_time_minutes} mins</span>
+                            <span class="meta-price">💰 ${priceText}</span>
+                        </div>
+                    </div>
+                `;
+
+                // Handle click on card
+                card.addEventListener('click', (e) => {
+                    if (e.target.type === 'checkbox') {
+                        toggleServiceSelection(service.id, e.target.checked);
+                    } else {
+                        const checkbox = card.querySelector('.service-checkbox');
+                        checkbox.checked = !checkbox.checked;
+                        toggleServiceSelection(service.id, checkbox.checked);
+                    }
+                });
+
+                container.appendChild(card);
+            });
+        }
+
+        function toggleServiceSelection(serviceId, isSelected) {
+            const card = document.querySelector(`.service-card[data-id="${serviceId}"]`);
+            if (isSelected) {
+                selectedServices.add(serviceId);
+                card.classList.add('selected');
+            } else {
+                selectedServices.delete(serviceId);
+                card.classList.remove('selected');
+            }
+            updateSummary();
+
+            // Reload slots if date is selected
+            const dateVal = document.getElementById('appointment_date').value;
+            if (dateVal) {
+                loadTimeSlots(dateVal);
+            }
+        }
+
+        function updateSummary() {
+            const summaryPanel = document.getElementById('summary-panel');
+            if (selectedServices.size === 0) {
+                summaryPanel.style.display = 'none';
+                return;
+            }
+
+            let totalMinutes = 0;
+            let totalFee = 0;
+
+            selectedServices.forEach(id => {
+                const card = document.querySelector(`.service-card[data-id="${id}"]`);
+                totalMinutes += parseInt(card.dataset.minutes);
+                totalFee += parseFloat(card.dataset.fee);
+            });
+
+            document.getElementById('summary-count').textContent = selectedServices.size;
+            document.getElementById('summary-duration').textContent = `${totalMinutes} mins`;
+            document.getElementById('summary-price').textContent = `$${totalFee.toFixed(2)}`;
+            summaryPanel.style.display = 'block';
+        }
+
+        // Check if selected date is off day
+        function isOffDay(dateString) {
+            const day = new Date(dateString).getDay();
+            // Map JS Sunday(0)-Saturday(6) to model Monday(0)-Sunday(6)
+            const adjustedDay = day === 0 ? 6 : day - 1;
+            return salonInfo.working_hours.off_days.includes(adjustedDay);
+        }
+
+        // Get total duration of selected services
+        function getSelectedDuration() {
+            let totalMinutes = 0;
+            selectedServices.forEach(id => {
+                const card = document.querySelector(`.service-card[data-id="${id}"]`);
+                totalMinutes += parseInt(card.dataset.minutes);
+            });
+            return totalMinutes;
+        }
+
+        // Fetch time slots
+        async function loadTimeSlots(date) {
+            const slotsContainer = document.getElementById('time-slots');
+            const timeContainer = document.getElementById('time-container');
+            const offAlert = document.getElementById('off-day-alert');
+
+            slotsContainer.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted);">Loading available times...</div>';
+            timeContainer.style.display = 'block';
+            offAlert.style.display = 'none';
+            selectedTime = null;
+            document.getElementById('appointment_time').value = '';
+
+            if (selectedServices.size === 0) {
+                slotsContainer.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--secondary);">Please select at least one service first.</div>';
+                return;
+            }
+
+            if (isOffDay(date)) {
+                timeContainer.style.display = 'none';
+                offAlert.textContent = "The salon is closed on this day. Please pick another date.";
+                offAlert.style.display = 'block';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${baseApptPath}/available-slots/new/?date=${date}&user_id=${salonInfo.user_id}`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    slotsContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #F87171;">${result.message}</div>`;
+                    return;
+                }
+
+                const slots = result.data.available_slots;
+                slotsContainer.innerHTML = '';
+
+                if (slots.length === 0) {
+                    slotsContainer.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted);">No slots fit this duration. Try another date or fewer services.</div>';
+                    return;
+                }
+
+                slots.forEach(slot => {
+                    const pill = document.createElement('div');
+                    pill.className = 'time-slot-pill';
+                    pill.textContent = slot.time_slot;
+
+                    if (!slot.is_available) {
+                        pill.classList.add('unavailable');
+                    } else {
+                        pill.addEventListener('click', () => {
+                            document.querySelectorAll('.time-slot-pill').forEach(p => p.classList.remove('selected'));
+                            pill.classList.add('selected');
+                            selectedTime = slot.time_slot;
+                            document.getElementById('appointment_time').value = slot.time_slot;
+                        });
+                    }
+
+                    slotsContainer.appendChild(pill);
+                });
+
+            } catch (err) {
+                slotsContainer.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #F87171;">Failed to load time slots.</div>';
+            }
+        }
+
+        // Listen for date changes
+        document.getElementById('appointment_date').addEventListener('change', (e) => {
+            const date = e.target.value;
+            if (date) {
+                loadTimeSlots(date);
+            }
+        });
+
+        // Form submission
+        document.getElementById('booking-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (selectedServices.size === 0) {
+                alert('Please select at least one service.');
+                return;
+            }
+
+            if (!selectedTime) {
+                alert('Please select a time slot.');
+                return;
+            }
+
+            const submitBtn = document.getElementById('submit-btn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Requesting Appointment...';
+
+            const payload = {
+                client_name: document.getElementById('client_name').value,
+                client_contact: document.getElementById('client_contact').value,
+                client_email: document.getElementById('client_email').value,
+                service_type: Array.from(selectedServices),
+                appointment_date: document.getElementById('appointment_date').value,
+                appointment_time: selectedTime
+            };
+
+            try {
+                const response = await fetch(apiBasePath, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    alert('Server error: Response was not in JSON format.');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Confirm Appointment';
+                    return;
+                }
+
+                const result = await response.json();
+                if (result.success) {
+                    document.getElementById('booking-form').reset();
+                    selectedServices.clear();
+                    selectedTime = null;
+                    document.getElementById('summary-panel').style.display = 'none';
+                    document.getElementById('time-container').style.display = 'none';
+
+                    document.getElementById('success-box').style.display = 'block';
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+                    setTimeout(() => {
+                        document.getElementById('success-box').style.display = 'none';
+                    }, 8000);
+                } else {
+                    alert(`Booking Failed: ${result.message}`);
+                }
+            } catch (err) {
+                alert('An error occurred during submission.');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Confirm Appointment';
+            }
+        });
+
+        // Start
+        init();
+    </script>
+</body>
+
+</html>

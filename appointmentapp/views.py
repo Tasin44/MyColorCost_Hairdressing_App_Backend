@@ -1208,15 +1208,21 @@ class AppointmentDetailView(StandardResponseMixin, APIView):
             )
         
         # Update slot booking count
-        try:
-            slot = TimeSlotBooking.objects.get(
-                user=appointment.user,
-                date=appointment.appointment_date,
-                time_slot=appointment.appointment_time
-            )
-            slot.decrement_booking()
-        except TimeSlotBooking.DoesNotExist:
-            pass
+        total_duration = appointment.get_total_duration()
+        intervals = (total_duration + 14) // 15
+        current_time = datetime.combine(appointment.appointment_date, appointment.appointment_time)
+        
+        for i in range(intervals):
+            slot_time = (current_time + timedelta(minutes=15 * i)).time()
+            try:
+                slot = TimeSlotBooking.objects.get(
+                    user=appointment.user,
+                    date=appointment.appointment_date,
+                    time_slot=slot_time
+                )
+                slot.decrement_booking()
+            except TimeSlotBooking.DoesNotExist:
+                pass
         
         # Delete appointment
         client_name = appointment.get_client_name()

@@ -526,6 +526,16 @@ class Mix(models.Model):
     # Mix details
     mix_name = models.CharField(max_length=255, db_index=True)
     service_type = models.CharField(max_length=100, db_index=True)
+
+    # NEW: FK to ServiceType for new mix creation flow (nullable for backward compat)
+    service_type_fk = models.ForeignKey(
+        'appointmentapp.ServiceType',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='mixes',
+        help_text="FK to ServiceType (used by new mix creation API)"
+    )
  
     # Financial tracking
     charged_amount = models.DecimalField(
@@ -730,6 +740,141 @@ class MixProduct(models.Model):
         if not self.each_item_cost:  # Only calculate if not already set
             self.calculate_cost()
         super().save(*args, **kwargs)
+
+
+# =============================================================================
+# NEW: Bowl and BowlProduct models for new mix creation flow
+# The existing Mix/MixProduct models above are completely untouched.
+# =============================================================================
+
+class Bowl(models.Model):
+    """
+    A "bowl" within a Mix — each bowl can hold multiple products.
+    One Mix can have many Bowls.
+    This replaces the flat Mix → MixProduct structure for the new API.
+    """
+    id = models.AutoField(primary_key=True)
+
+    mix = models.ForeignKey(
+        Mix,
+        on_delete=models.CASCADE,
+        related_name='bowls',
+        db_index=True,
+        help_text="Parent mix this bowl belongs to"
+    )
+
+    service_name = models.CharField(
+        max_length=255,
+        help_text="e.g. Hair Color Service"
+    )
+    mix_name = models.CharField(
+        max_length=255,
+        help_text="e.g. Spa Mix 14"
+    )
+    charged_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text="Amount charged for this bowl"
+    )
+    bleach_timer_start_time = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text="ISO datetime string for bleach timer"
+    )
+    total_cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Sum of all product costs in this bowl"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'bowls'
+        ordering = ['id']
+
+    def __str__(self):
+        return f"Bowl: {self.mix_name} in Mix#{self.mix_id}"
+
+    def calculate_total_cost(self):
+        """Sum BowlProduct costs and save."""
+        from django.db.models import Sum
+        total = self.bowl_products.aggregate(
+            total=Sum('each_item_cost')
+        )['total'] or Decimal('0.00')
+        self.total_cost = total
+        self.save(update_fields=['total_cost', 'updated_at'])
+
+
+class BowlProduct(models.Model):
+    """
+    A product used inside a Bowl.
+    Mirrors MixProduct but belongs to Bowl instead of Mix.
+    """
+    id = models.AutoField(primary_key=True)
+
+    bowl = models.ForeignKey(
+        Bowl,
+        on_delete=models.CASCADE,
+        related_name='bowl_products',
+        db_index=True
+    )
+    user_product = models.ForeignKey(
+        UserProduct,
+        on_delete=models.CASCADE,
+        related_name='bowl_products',
+        db_index=True
+    )
+
+    product_name = models.CharField(max_length=255)
+    used_weight = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+        help_text="Weight used in grams"
+    )
+    market_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="Market price per 100g at time of use"
+    )
+    user_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="User’s price per 100g at time of use"
+    )
+    each_item_cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Cost for this item: (user_price / original_weight) * used_weight"
+    )
+
+    class Meta:
+        db_table = 'bowl_products'
+        ordering = ['id']
+
+    def __str__(self):
+        return f"{self.product_name} – {self.used_weight}g in {self.bowl}"
+
+    def calculate_cost(self):
+        """(user_price * used_weight) / 100"""
+        self.each_item_cost = (
+            self.user_price * self.used_weight
+        ) / Decimal('100')
+
+    def save(self, *args, **kwargs):
+        if not self.each_item_cost:
+            self.calculate_cost()
+        super().save(*args, **kwargs)
+
+
 
 
 #=================================================================

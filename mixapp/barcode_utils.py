@@ -354,7 +354,7 @@
 # barcode_api = BarcodeSpiderAPI()
 
 #----------------------------------------------------------------
-
+'''
 import requests
 from decimal import Decimal
 import logging
@@ -367,8 +367,9 @@ class BarcodeSpiderAPI:
     Sends token as HEADER (not query param) per their documentation
     """
     
-    BASE_URL = "https://api.barcodespider.com/v1"
-    TOKEN = "c7942a6929183658052f"
+    BASE_URL = "https://api.barcodespider.com/v2"
+    TOKEN = "2dfeae0078c7257f3f4c0ecfe71290f3"
+    
     def lookup_barcode(self, upc):
         """Lookup product by UPC/barcode"""
         try:
@@ -507,4 +508,167 @@ class BarcodeSpiderAPI:
 
 
 # ✅ Create singleton instance
+barcode_api = BarcodeSpiderAPI()
+'''
+import os
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class BarcodeSpiderAPI:
+    """Barcode Spider API v2 wrapper - uses key query param per official docs"""
+    
+    BASE_URL = os.getenv('BARCODE_SPIDER_BASE_URL', 'https://api.barcodespider.com/v2/')
+    API_KEY = os.getenv('BARCODE_SPIDER_API_KEY')
+    
+    def lookup_barcode(self, upc):
+        """Lookup product by UPC/barcode using v2 endpoint"""
+        try:
+            # ✅ CORRECT: v2 uses /products/{upc} with key as query param
+            url = f"{self.BASE_URL.rstrip('/')}/products/{upc}"
+            
+            params = {'key': self.API_KEY}
+            
+            print(f"🔍 REQUEST URL: {url}?key={self.API_KEY}")
+            
+            response = requests.get(url, params=params, timeout=10)
+            
+            print(f"📥 STATUS CODE: {response.status_code}")
+            print(f" RAW RESPONSE: {response.text}")
+            
+            if response.status_code != 200:
+                print(f"❌ HTTP ERROR: {response.status_code}")
+                return None
+            
+            data = response.json()
+            
+            # Check for different possible structures in Barcode Spider response
+            # 1. Nesting under 'product' (standard v2 format seen in response logs)
+            # 2. Nesting under 'item_attributes' (older format)
+            # 3. Flat format (fallback)
+            if 'product' in data:
+                item = data['product']
+                title = item.get('name')
+                description = item.get('description', '')
+                brand = item.get('brand', '')
+                manufacturer = item.get('manufacturer', '')
+                
+                # Extract image url from images list if available
+                images = item.get('images', [])
+                image_url = images[0] if (isinstance(images, list) and len(images) > 0) else item.get('image', '')
+                
+                weight = item.get('weight', '')
+                
+                # Category can be a dict or a string
+                category_data = item.get('category', '')
+                if isinstance(category_data, dict):
+                    category = category_data.get('path', '')
+                else:
+                    category = category_data
+                    
+                model = item.get('model', '')
+                asin = item.get('asin', '')
+                mpn = item.get('mpn', '')
+                
+                # UPC/EAN from identifiers values
+                identifiers = data.get('identifiers', {})
+                values = identifiers.get('values', {})
+                upc_val = values.get('upc') or item.get('upc') or upc
+                ean_val = values.get('ean13') or item.get('ean') or ''
+                color = item.get('color', '')
+                size = item.get('size', '')
+            else:
+                item = data.get('item_attributes', data)
+                title = item.get('title')
+                description = item.get('description', '')
+                brand = item.get('brand', '')
+                manufacturer = item.get('manufacturer', '')
+                image_url = item.get('image', '')
+                weight = item.get('weight', '')
+                category = item.get('category', '')
+                model = item.get('model', '')
+                asin = item.get('asin', '')
+                mpn = item.get('mpn', '')
+                upc_val = item.get('upc', upc)
+                ean_val = item.get('ean', '')
+                color = item.get('color', '')
+                size = item.get('size', '')
+            
+            if not title:
+                print("❌ NO TITLE IN RESPONSE")
+                return None
+            
+            print(f"✅ PRODUCT FOUND: {title}")
+            
+            return {
+                'name': title,
+                'description': description,
+                'brand': brand,
+                'manufacturer': manufacturer,
+                'image_url': image_url,
+                'weight': weight,
+                'category': category,
+                'model': model,
+                'asin': asin,
+                'mpn': mpn,
+                'upc': upc_val,
+                'ean': ean_val,
+                'color': color,
+                'size': size,
+                'raw_data': data
+            }
+            
+        except Exception as e:
+            print(f"💥 ERROR: {str(e)}")
+            raise
+    
+    def search_product(self, query):
+        """Search products by keyword using v2 endpoint"""
+        try:
+            # ✅ CORRECT: v2 uses /products?query=...
+            url = f"{self.BASE_URL.rstrip('/')}/products"
+            
+            params = {
+                'key': self.API_KEY,
+                'query': query
+            }
+            
+            print(f"🔍 SEARCH URL: {url}?query={query}&key=***")
+            
+            response = requests.get(url, params=params, timeout=10)
+            
+            if response.status_code != 200:
+                print(f"❌ Search API Error: {response.status_code}")
+                return []
+            
+            data = response.json()
+            item_list = data.get('item_list', [])
+            
+            if not item_list:
+                print(f" No results for: {query}")
+                return []
+            
+            results = []
+            for item in item_list:
+                title = item.get('title', '').strip()
+                if title:
+                    results.append({
+                        'name': title,
+                        'description': item.get('description', ''),
+                        'brand': item.get('brand', ''),
+                        'image_url': item.get('image', ''),
+                        'upc': item.get('upc', ''),
+                        'category': item.get('category', '')
+                    })
+            
+            print(f"✅ Found {len(results)} products")
+            return results
+            
+        except Exception as e:
+            print(f"💥 Search Error: {str(e)}")
+            return []
+
+
+# Singleton instance
 barcode_api = BarcodeSpiderAPI()

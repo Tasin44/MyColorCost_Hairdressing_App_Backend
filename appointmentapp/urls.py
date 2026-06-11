@@ -15,6 +15,15 @@ from .views import (
     DashboardStatsView,
     BookingPageView
 )
+from .new_views import (
+    ServiceListView,
+    ServiceDetailView,
+    NewWorkingHoursSetupView,
+    NewAppointmentCreateView,
+    NewSelfBookingView,
+    NewAvailableTimeSlotsView,
+    NewBookingPageView,
+)
 
 app_name = 'appointment'
 
@@ -93,4 +102,27 @@ urlpatterns = [
 
 
    # path('book/<str:token>/', BookingPageView.as_view(), name='booking-page'),
+
+
+    # =========================================================
+    # NEW API ENDPOINTS  (existing endpoints above are untouched)
+    # =========================================================
+
+    # Service management (Settings → Services)
+    path('services/', ServiceListView.as_view(), name='service-list'),
+    path('services/<int:service_id>/', ServiceDetailView.as_view(), name='service-detail'),
+
+    # Per-day working hours (new flexible setup)
+    path('working-hours/setup/new/', NewWorkingHoursSetupView.as_view(), name='new-working-hours-setup'),
+
+    # New appointment creation (supports multiple services + extra times)
+    path('create/new/', NewAppointmentCreateView.as_view(), name='new-appointment-create'),
+
+    # New client self-booking (returns enriched service details)
+    path('book/<str:token>/new/', NewBookingPageView.as_view(), name='new-booking-page'),
+    path('book/<str:token>/new', NewBookingPageView.as_view()),
+    path('book/<str:token>/new/data/', NewSelfBookingView.as_view(), name='new-self-booking'),
+
+    # New available time slots (aware of DailyWorkingHours)
+    path('available-slots/new/', NewAvailableTimeSlotsView.as_view(), name='new-available-slots'),
 ]

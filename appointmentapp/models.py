@@ -113,6 +113,12 @@ class ServiceType(models.Model):
     Services offered by salon owner for client self-booking.
     Created once during appointment URL generation.
     """
+    PRICE_TYPE_CHOICES = (
+        ('free', 'Free'),
+        ('fixed', 'Fixed'),
+        ('from', 'From'),
+    )
+
     # id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     id = models.AutoField(primary_key=True)
     
@@ -127,8 +133,34 @@ class ServiceType(models.Model):
         max_length=100,
         help_text="Service name (e.g., Haircut, Coloring, etc.)"
     )
-    
+
+    # ── NEW FIELDS (added without breaking existing data) ──
+    description = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Optional description of the service"
+    )
+    service_time_minutes = models.IntegerField(
+        default=30,
+        help_text="Service duration in minutes (shown to clients)"
+    )
+    price_type = models.CharField(
+        max_length=10,
+        choices=PRICE_TYPE_CHOICES,
+        default='fixed',
+        help_text="free=0, fixed=exact price, from=starting price"
+    )
+    service_fee = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Service fee amount (0 if free)"
+    )
+    # ── END NEW FIELDS ──
+
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
         db_table = 'service_types'
@@ -137,6 +169,79 @@ class ServiceType(models.Model):
     
     def __str__(self):
         return f"{self.user.email} - {self.name}"
+
+
+
+class DailyWorkingHours(models.Model):
+    """
+    NEW model: per-day working hours for each user.
+    Replaces the single-row WorkingHours with 7 flexible day entries.
+    The old WorkingHours model is kept intact.
+    """
+    WEEKDAY_CHOICES = (
+        (0, 'Monday'),
+        (1, 'Tuesday'),
+        (2, 'Wednesday'),
+        (3, 'Thursday'),
+        (4, 'Friday'),
+        (5, 'Saturday'),
+        (6, 'Sunday'),
+    )
+
+    id = models.AutoField(primary_key=True)
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='daily_working_hours',
+        db_index=True
+    )
+
+    weekday = models.IntegerField(
+        choices=WEEKDAY_CHOICES,
+        help_text="0=Monday … 6=Sunday"
+    )
+
+    start_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Start time for this day (null if off day)"
+    )
+    end_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="End time for this day (null if off day)"
+    )
+
+    is_off = models.BooleanField(
+        default=False,
+        help_text="True = this day is an off day"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'daily_working_hours'
+        unique_together = ('user', 'weekday')
+        ordering = ['weekday']
+
+    def __str__(self):
+        status = 'OFF' if self.is_off else f"{self.start_time}-{self.end_time}"
+        day_name = dict(self.WEEKDAY_CHOICES).get(self.weekday, str(self.weekday))
+        return f"{self.user.email} - {day_name}: {status}"
+
+    def generate_time_slots(self):
+        """Generate 15-minute time slots for this day. Returns [] if off day."""
+        if self.is_off or not self.start_time or not self.end_time:
+            return []
+        slots = []
+        current = datetime.combine(datetime.today(), self.start_time)
+        end = datetime.combine(datetime.today(), self.end_time)
+        while current < end:
+            slots.append(current.time())
+            current += timedelta(minutes=15)
+        return slots
 
 
 class AppointmentURL(models.Model):
@@ -322,6 +427,26 @@ class Appointment(models.Model):
         default='scheduled',
         db_index=True
     )
+
+    # ==================== EXTRA TIMES (NEW) ====================
+    processing_time = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(60)],
+        help_text="Processing time in minutes (1–60)"
+    )
+    blocked_time = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(60)],
+        help_text="Blocked time in minutes (1–60)"
+    )
+    extra_servicing = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(60)],
+        help_text="Extra servicing time in minutes (1–60)"
+    )
     # ==================== REMINDER ====================
     
     reminder_hours = models.IntegerField(
@@ -381,9 +506,11 @@ class Appointment(models.Model):
     
     def get_service_display(self):
         """Get service display text from either source"""
+        if self.service_name:
+            return self.service_name
         if self.service_type:
             return self.service_type.name
-        return self.service_name or "N/A"
+        return "N/A"
     
     @property
     def is_past(self):
@@ -436,6 +563,29 @@ class Appointment(models.Model):
     def is_today(self):
         """Check if appointment is today"""
         return self.appointment_date == timezone.now().date()
+
+    def get_total_duration(self):
+        """Calculate total duration of the appointment in minutes"""
+        services_duration = 0
+        owner = self.user
+        if self.service_name:
+            names = [n.strip() for n in self.service_name.split(',') if n.strip()]
+            services = ServiceType.objects.filter(user=owner, name__in=names)
+            service_map = {s.name: s for s in services}
+            for name in names:
+                if name in service_map:
+                    services_duration += service_map[name].service_time_minutes
+                else:
+                    services_duration += 30
+        elif self.service_type:
+            services_duration = self.service_type.service_time_minutes
+        else:
+            services_duration = 30
+            
+        processing = self.processing_time or 0
+        blocked = self.blocked_time or 0
+        extra = self.extra_servicing or 0
+        return services_duration + processing + blocked + extra
 
 
 class TimeSlotBooking(models.Model):

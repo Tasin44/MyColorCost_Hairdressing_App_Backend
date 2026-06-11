@@ -25,6 +25,7 @@ from .views import (
     EarningOverviewView , # ✅ ADD THIS
     AccountsDashboardOverviewView
 )
+from .new_views import NewMixView, NewMixDetailView
  
 app_name = 'mixapp'
 
@@ -34,8 +35,13 @@ router.register(r'mixes', MixViewSet, basename='mix')
 router.register(r'expenses', ExpenseViewSet, basename='expense')  # ✅ ADD THIS
 
 urlpatterns = [
+    # ===== NEW API ENDPOINTS =====
+    path('mixes/new/', NewMixView.as_view(), name='new-mix-create-list'),
+    path('mixes/<int:mix_id>/new/', NewMixDetailView.as_view(), name='new-mix-detail'),
+
     # Shop Products (Master Catalog)
     path('shop-products/', ShopProductListView.as_view(), name='shop-product-list'),
+
     path('shop-products/<int:product_id>/', ShopProductDetailView.as_view(), name='shop-product-detail'),
  
     # User Products (Inventory)
@@ -91,5 +97,7 @@ urlpatterns = [
     #==========================================================
     path('overview/', AccountsDashboardOverviewView.as_view(), name='dashboard-overview'),
 ]
+
+
 
 
