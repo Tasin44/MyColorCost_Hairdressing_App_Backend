@@ -238,7 +238,7 @@ class NewWorkingHoursSetupView(NewStandardResponseMixin, APIView):
         return self.success_response(
             data={
                 'id': owner.id,
-                'is_locked': False,  # always editable in new flow
+                'is_locked': entries.exists(),
                 'working_days': serializer.data,
                 'off_days': off_days,
                 'created_at': entries.first().created_at if entries.exists() else None,
