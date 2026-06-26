@@ -33,7 +33,7 @@ services:
     volumes:
       - .:/app
       - static_volume:/app/staticfiles
-      - media_volume:/app/media
+      - /var/www/backend/media:/app/media
       - logs_volume:/app/logs
       - db_volume:/app/db
 
