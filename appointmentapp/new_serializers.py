@@ -476,6 +476,8 @@ class NewAppointmentDetailSerializer(serializers.ModelSerializer):
     service_display = serializers.SerializerMethodField()
     services = serializers.SerializerMethodField()
 
+    total_time = serializers.SerializerMethodField()
+
     class Meta:
         model = Appointment
         fields = [
@@ -485,7 +487,7 @@ class NewAppointmentDetailSerializer(serializers.ModelSerializer):
             'status', 'appointment_type',
             'reminder_hours', 'reminder_sent',
             'notes',
-            'processing_time', 'blocked_time', 'extra_servicing',
+            'processing_time', 'blocked_time', 'extra_servicing', 'total_time',
             'created_by', 'is_past', 'is_today',
             'created_at', 'updated_at',
         ]
@@ -515,6 +517,16 @@ class NewAppointmentDetailSerializer(serializers.ModelSerializer):
 
     def get_service_display(self, obj):
         return obj.service_name or obj.get_service_display()
+
+    def get_total_time(self, obj):
+        services_data = self.get_services(obj)
+        service_time_minutes = sum(s.get('service_time_minutes') or 0 for s in services_data)
+        
+        processing_time = obj.processing_time or 0
+        blocked_time = obj.blocked_time or 0
+        extra_servicing = obj.extra_servicing or 0
+        
+        return service_time_minutes + processing_time + blocked_time + extra_servicing
 
     def get_services(self, obj):
         """Return list of services from service_type FK + service_name."""

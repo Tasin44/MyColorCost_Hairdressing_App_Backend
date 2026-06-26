@@ -332,6 +332,36 @@ class NewAppointmentCreateView(NewStandardResponseMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
+    def get(self, request, appointment_id=None):
+        user = request.user
+        if user.role not in ['owner', 'staff', 'self_employed']:
+            return self.error_response(
+                "You don't have permission to view appointments.",
+                status_code=403,
+            )
+
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            owner = user.staff_profile.main_user
+        else:
+            owner = user
+
+        if appointment_id:
+            try:
+                appointment = Appointment.objects.get(id=appointment_id, user=owner)
+                return self.success_response(
+                    data=NewAppointmentDetailSerializer(appointment, context={'request': request}).data,
+                    message="Appointment retrieved successfully."
+                )
+            except Appointment.DoesNotExist:
+                return self.error_response("Appointment not found.", status_code=404)
+        else:
+            appointments = Appointment.objects.filter(user=owner).order_by('-appointment_date', '-appointment_time')
+            return self.success_response(
+                data=NewAppointmentDetailSerializer(appointments, many=True, context={'request': request}).data,
+                message="Appointments retrieved successfully."
+            )
+
+    @transaction.atomic
     def post(self, request):
         user = request.user
         if user.role not in ['owner', 'staff', 'self_employed']:

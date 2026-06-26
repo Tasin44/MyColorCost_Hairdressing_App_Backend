@@ -117,6 +117,7 @@ urlpatterns = [
 
     # New appointment creation (supports multiple services + extra times)
     path('create/new/', NewAppointmentCreateView.as_view(), name='new-appointment-create'),
+    path('create/new/<int:appointment_id>/', NewAppointmentCreateView.as_view(), name='new-appointment-detail'),
 
     # New client self-booking (returns enriched service details)
     path('book/<str:token>/new/', NewBookingPageView.as_view(), name='new-booking-page'),

@@ -253,9 +253,25 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         return value.strip()
     
     def validate_email(self, value):
-        """Validate email format if provided"""
-        if value:
-            value = value.lower().strip()
+        """Validate email format if provided and check uniqueness for the owner"""
+        if not value:
+            return value
+            
+        value = value.lower().strip()
+        user = self.context['request'].user
+        
+        existing = Client.objects.filter(
+            user=user,
+            email=value
+        )
+        if self.instance:
+            existing = existing.exclude(id=self.instance.id)
+            
+        if existing.exists():
+            raise serializers.ValidationError({
+                'A client with this email already exists.'
+            })
+            
         return value
     
     def validate_contact_number(self, value):
