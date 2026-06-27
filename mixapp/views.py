@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status, serializers
 from rest_framework.viewsets import ModelViewSet
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db import transaction
 from django.db.models import Q, Sum, Count, Avg
 from django.utils import timezone
@@ -266,7 +266,8 @@ class UserProductListView(StandardResponseMixin, APIView):
                 'user_price': str(user_product.user_price) if user_product.user_price else None,
                 'current_weight_grams': str(user_product.current_weight_grams),
                 'is_available': user_product.is_available,
-                'last_used_at': user_product.last_used_at.isoformat() if user_product.last_used_at else None
+                'last_used_at': user_product.last_used_at.isoformat() if user_product.last_used_at else None,
+                'barcode': user_product.product.barcode,  # ✅ Include barcode
             }
             
             # ✅ Check if manual entry (has scan history with manual type)
@@ -324,79 +325,187 @@ class UserProductListView(StandardResponseMixin, APIView):
 class UserProductDetailView(StandardResponseMixin, APIView):
     """Get, update, or delete a specific product from user inventory"""
     permission_classes = [IsAuthenticated]
- 
+    parser_classes = [MultiPartParser, FormParser, JSONParser]  # ✅ form-data + JSON support
+
+    def _get_owner(self, user):
+        """Resolve actual owner (handles staff users)"""
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            return user.staff_profile.main_user
+        return user
+
     def get_object(self, request, user_product_id):
-        """Get user product"""
+        """Get user product (resolves staff owner)"""
+        owner = self._get_owner(request.user)
         try:
             return UserProduct.objects.select_related('product').get(
                 id=user_product_id,
-                user=request.user
+                user=owner
             )
         except UserProduct.DoesNotExist:
             return None
  
     def get(self, request, user_product_id):
-        """Get user product details"""
+        """Get user product details including barcode"""
         user_product = self.get_object(request, user_product_id)
- 
+
         if not user_product:
             return self.error_response(
                 "Product not found in inventory",
                 status_code=404
             )
- 
-        serializer = UserProductSerializer(
-            user_product,
-            context={'request': request}
-        )
- 
+
+        # Check if manual entry
+        owner = self._get_owner(request.user)
+
+        is_manual = ProductScanHistory.objects.filter(
+            shop_product=user_product.product,
+            user=owner,
+            scan_type='manual'
+        ).exists()
+
+        product_data = {
+            'id': user_product.id,
+            'product_id': user_product.product.id,
+            'product_name': user_product.product.name,
+            'product_image': f"{settings.BASE_URL}{user_product.product.image.url}" if user_product.product.image else None,
+            'market_price': str(user_product.product.market_price),
+            'user_price': str(user_product.user_price) if user_product.user_price else None,
+            'current_weight_grams': str(user_product.current_weight_grams),
+            'is_available': user_product.is_available,
+            'last_used_at': user_product.last_used_at.isoformat() if user_product.last_used_at else None,
+            'barcode': user_product.product.barcode,  # ✅ Include barcode
+        }
+
+        if not is_manual:
+            product_data['scanned_at'] = user_product.scanned_at.isoformat()
+            product_data['api_data'] = user_product.product.api_data
+
         return self.success_response(
-            data=serializer.data,
+            data=product_data,
             message="Product retrieved successfully",
             status_code=200
         )
- 
+
     @transaction.atomic
     def patch(self, request, user_product_id):
-        """Update user product (price or weight)"""
+        """Update user product fields (product_name, product_image, market_price, user_price, current_weight_grams)"""
         user_product = self.get_object(request, user_product_id)
- 
+
         if not user_product:
             return self.error_response(
                 "Product not found in inventory",
                 status_code=404
             )
- 
-        # Allow updating user_price and current_weight_grams
-        allowed_fields = ['user_price', 'current_weight_grams']
-        update_data = {
-            k: v for k, v in request.data.items() if k in allowed_fields
+
+        shop_product = user_product.product
+        errors = {}
+
+        # ---- Fields that belong to ShopProduct ----
+        shop_product_updated = False
+
+        if 'product_name' in request.data:
+            name = str(request.data['product_name']).strip()
+            if not name:
+                errors['product_name'] = 'Product name cannot be blank.'
+            else:
+                shop_product.name = name
+                shop_product_updated = True
+
+        if 'market_price' in request.data:
+            try:
+                mp = Decimal(str(request.data['market_price']))
+                if mp <= 0:
+                    errors['market_price'] = 'Market price must be greater than 0.'
+                else:
+                    shop_product.market_price = mp
+                    shop_product_updated = True
+            except Exception:
+                errors['market_price'] = 'Invalid market price value.'
+
+        if 'product_image' in request.data:
+            # Accepts an uploaded file (multipart) for product_image
+            image_file = request.data['product_image']
+            shop_product.image = image_file
+            shop_product_updated = True
+
+        if shop_product_updated:
+            if errors:
+                return self.error_response(
+                    "Failed to update product",
+                    status_code=400,
+                    data=errors
+                )
+            shop_product.save(update_fields=[
+                f for f in ['name', 'market_price', 'image']
+                if f in (
+                    (['name'] if 'product_name' in request.data else []) +
+                    (['market_price'] if 'market_price' in request.data else []) +
+                    (['image'] if 'product_image' in request.data else [])
+                )
+            ])
+
+        # ---- Fields that belong to UserProduct ----
+        user_product_updated = False
+
+        if 'user_price' in request.data:
+            try:
+                up = Decimal(str(request.data['user_price']))
+                if up <= 0:
+                    errors['user_price'] = 'User price must be greater than 0.'
+                else:
+                    user_product.user_price = up
+                    user_product_updated = True
+            except Exception:
+                errors['user_price'] = 'Invalid user price value.'
+
+        if 'current_weight_grams' in request.data:
+            try:
+                wt = Decimal(str(request.data['current_weight_grams']))
+                if wt < 0:
+                    errors['current_weight_grams'] = 'Weight cannot be negative.'
+                else:
+                    user_product.current_weight_grams = wt
+                    user_product.is_available = wt > 0
+                    user_product_updated = True
+            except Exception:
+                errors['current_weight_grams'] = 'Invalid weight value.'
+
+        if errors:
+            return self.error_response(
+                "Failed to update product",
+                status_code=400,
+                data=errors
+            )
+
+        if user_product_updated:
+            save_fields = []
+            if 'user_price' in request.data:
+                save_fields.append('user_price')
+            if 'current_weight_grams' in request.data:
+                save_fields += ['current_weight_grams', 'is_available']
+            user_product.save(update_fields=save_fields)
+
+        # Re-fetch for consistent response
+        user_product.refresh_from_db()
+        shop_product.refresh_from_db()
+
+        response_data = {
+            'id': user_product.id,
+            'product_id': shop_product.id,
+            'product_name': shop_product.name,
+            'product_image': f"{settings.BASE_URL}{shop_product.image.url}" if shop_product.image else None,
+            'market_price': str(shop_product.market_price),
+            'user_price': str(user_product.user_price) if user_product.user_price else None,
+            'current_weight_grams': str(user_product.current_weight_grams),
+            'is_available': user_product.is_available,
+            'last_used_at': user_product.last_used_at.isoformat() if user_product.last_used_at else None,
+            'barcode': shop_product.barcode,  # ✅ Include barcode
         }
 
-        serializer = UserProductSerializer(
-            user_product,
-            data=update_data,
-            partial=True,
-            context={'request': request}
-        )
- 
-        if serializer.is_valid():
-            # Update availability based on weight
-            if 'current_weight_grams' in update_data:
-                user_product.is_available = float(update_data['current_weight_grams']) > 0
- 
-            user_product = serializer.save()
- 
-            return self.success_response(
-                data=serializer.data,
-                message="Product updated successfully",
-                status_code=200
-            )
- 
-        return self.error_response(
-            "Failed to update product",
-            status_code=400,
-            data=serializer.errors
+        return self.success_response(
+            data=response_data,
+            message="Product updated successfully",
+            status_code=200
         )
  
     @transaction.atomic
