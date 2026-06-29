@@ -23,6 +23,7 @@ from .new_serializers import (
     NewAppointmentCreateSerializer,
     NewAppointmentDetailSerializer,
     NewSelfBookingSerializer,
+    CancelAppointmentSerializer,
 )
 
 import logging
@@ -388,7 +389,55 @@ class NewAppointmentCreateView(NewStandardResponseMixin, APIView):
 
 
 # ===========================================================================
-# 4. NEW CLIENT SELF-BOOKING
+# 4. CANCEL APPOINTMENT
+# ===========================================================================
+
+class CancelAppointmentView(NewStandardResponseMixin, APIView):
+    """
+    DELETE /appointment/create/new/<id>/
+
+    Cancels an appointment (sets status to 'cancelled') and releases
+    all occupied time slots back to available.
+    Only the owner or their staff can cancel.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _get_owner(self, user):
+        if user.role == 'staff' and hasattr(user, 'staff_profile'):
+            return user.staff_profile.main_user
+        return user
+
+    @transaction.atomic
+    def delete(self, request, appointment_id):
+        user = request.user
+        if user.role not in ['owner', 'staff', 'self_employed']:
+            return self.error_response(
+                "You don't have permission to cancel appointments.",
+                status_code=403,
+            )
+
+        owner = self._get_owner(user)
+        try:
+            appointment = Appointment.objects.get(id=appointment_id, user=owner)
+        except Appointment.DoesNotExist:
+            return self.error_response("Appointment not found.", status_code=404)
+
+        serializer = CancelAppointmentSerializer()
+        try:
+            serializer.cancel(appointment)
+        except Exception as e:
+            return self.error_response(str(e), status_code=400)
+
+        return self.success_response(
+            data=NewAppointmentDetailSerializer(
+                appointment, context={'request': request}
+            ).data,
+            message="Appointment cancelled successfully. Time slot is now available.",
+        )
+
+
+# ===========================================================================
+# 5. NEW CLIENT SELF-BOOKING
 # ===========================================================================
 
 class NewSelfBookingView(NewStandardResponseMixin, APIView):

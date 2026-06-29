@@ -20,6 +20,7 @@ from .new_views import (
     ServiceDetailView,
     NewWorkingHoursSetupView,
     NewAppointmentCreateView,
+    CancelAppointmentView,
     NewSelfBookingView,
     NewAvailableTimeSlotsView,
     NewBookingPageView,
@@ -118,6 +119,10 @@ urlpatterns = [
     # New appointment creation (supports multiple services + extra times)
     path('create/new/', NewAppointmentCreateView.as_view(), name='new-appointment-create'),
     path('create/new/<int:appointment_id>/', NewAppointmentCreateView.as_view(), name='new-appointment-detail'),
+
+    # Cancel appointment — frees the time slot back to available
+    # DELETE /appointment/create/new/<id>/
+    path('create/new/<int:appointment_id>/cancel/', CancelAppointmentView.as_view(), name='new-appointment-cancel'),
 
     # New client self-booking (returns enriched service details)
     path('book/<str:token>/new/', NewBookingPageView.as_view(), name='new-booking-page'),

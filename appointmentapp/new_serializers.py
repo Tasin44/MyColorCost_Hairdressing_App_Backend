@@ -722,3 +722,50 @@ class NewBookingPageSerializer(serializers.Serializer):
     user_id = serializers.CharField()
     services = ServiceTypeDetailSerializer(many=True)
     working_hours = serializers.SerializerMethodField()
+
+
+# ===========================================================================
+# 5. CANCEL APPOINTMENT
+# ===========================================================================
+
+class CancelAppointmentSerializer(serializers.Serializer):
+    """
+    DELETE /appointment/create/new/<id>/
+    Cancels an appointment and releases its time slots back to available.
+    """
+
+    @transaction.atomic
+    def cancel(self, appointment):
+        """
+        Set appointment status to 'cancelled' and decrement all booked
+        TimeSlotBooking slots that belong to this appointment.
+        """
+        if appointment.status == 'cancelled':
+            raise serializers.ValidationError("Appointment is already cancelled.")
+
+        # Calculate how many 15-min slots were originally occupied
+        total_duration = appointment.get_total_duration()
+        intervals = max((total_duration + 14) // 15, 1)
+
+        appt_datetime = datetime.combine(
+            appointment.appointment_date,
+            appointment.appointment_time,
+        )
+        owner = appointment.user
+
+        for i in range(intervals):
+            slot_time = (appt_datetime + timedelta(minutes=15 * i)).time()
+            try:
+                slot = TimeSlotBooking.objects.get(
+                    user=owner,
+                    date=appointment.appointment_date,
+                    time_slot=slot_time,
+                )
+                slot.decrement_booking()
+            except TimeSlotBooking.DoesNotExist:
+                # Slot may have been cleaned up already — skip gracefully
+                pass
+
+        appointment.status = 'cancelled'
+        appointment.save(update_fields=['status', 'updated_at'])
+        return appointment
